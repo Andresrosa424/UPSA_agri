@@ -167,4 +167,4 @@ ggplot(uppies) +
   theme(legend.title = element_text(size = 9), 
         legend.text = element_text(size = 8))
 
-use_git()
+

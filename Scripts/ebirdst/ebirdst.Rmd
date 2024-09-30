@@ -19,6 +19,7 @@ This code extracts and manipulates eBird status and trends data for the first ch
 
 
 library(dplyr)
+library(purrr)
 library(ggplot2)
 library(rnaturalearth)
 library(sf)
@@ -61,7 +62,6 @@ upsa <- trends_runs %>%
 upsa
 
 ```
-### Rasterize Upland Sandpiper trends
 Create object with trends
 ```{r}
 uppies_trends <- load_trends("uplsan")
@@ -71,6 +71,31 @@ uppies_trends <- load_trends("uplsan")
 write.csv(uppies_trends, file = "C:/Users/ROSALESA/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/Clean/uppies_trends20122022.csv", row.names = FALSE) 
 ```
 
+## Calculate Abd for each year (2012-2022)
+
+### Use the equation 
+
+$Ay = A2017 × (1 + r)^{y-2017}$
+
+- Ay is the abundance in year y.
+- A2017  is the abundance in 2017 (median year).
+- r is the annual percent change expressed as a decimal.
+- y is the year of interest.
+
+```{r}
+
+uppies_trends <- uppies_trends %>%
+  bind_cols(map_dfc(2012:2022, 
+                    ~ tibble(!!paste0("abd_", .x) := uppies_trends$abd * 
+                               (1 + uppies_trends$abd_ppy) ^ (.x - 2017))))
+
+
+
+
+```
+
+
+### Rasterize Upland Sandpiper trends
 
 rasterize cumulative trend estimate using `terra` package
 ```{r}

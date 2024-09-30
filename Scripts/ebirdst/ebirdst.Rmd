@@ -75,7 +75,7 @@ write.csv(uppies_trends, file = "C:/Users/ROSALESA/OneDrive - University of Sask
 rasterize cumulative trend estimate using `terra` package
 ```{r}
 trends_raster <- rasterize_trends(uppies_trends, 
-                                  layers = c("abd_trend"))
+                                  layers = c("abd"))
 
 #uses sinusodial projection, may need to create custom CRS definition when bringing into arcpro
 print(trends_raster)
@@ -90,7 +90,7 @@ Define projection as Alberts Conic Equal Area (EPSG 5070) and save as Geotiff
 
 #keep projection and change in arcpro
 #save as a geotiff for use in arcpro
-writeRaster(trends_raster, filename = "C:/Users/ROSALESA/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/Shapefiles/ebirdst/Uppies_trends_rasterized2022.tif", overwrite = TRUE)
+writeRaster(trends_raster, filename = "C:/Users/ROSALESA/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/Shapefiles/ebirdst/Uppies_abd_rasterized2022.tif", overwrite = TRUE)
 
 plot(trends_raster)
 

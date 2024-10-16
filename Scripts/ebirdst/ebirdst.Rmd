@@ -29,6 +29,9 @@ library(rnaturalearth)
 library(sf)
 library(raster)
 library(terra)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
 library(ebirdst)
 
 
@@ -51,7 +54,7 @@ set_ebirdst_access_key("3t1ddtda3uh3", overwrite = TRUE)
 Show all species with status and trend data available. We will subset to show Upland Sandpiper data availability. 
 ```{r}
 
-trends_runs <- ebirdst_runs %>%
+trend_runs <- ebirdst_runs %>%
   filter(has_trends) %>%
   dplyr::select(
     species_code, common_name, trends_season, trends_region,
@@ -59,22 +62,24 @@ trends_runs <- ebirdst_runs %>%
     trends_end_date, rsquared, beta0
   )
 
-upsa <- trends_runs %>%
+u_runs <- trend_runs %>%
   filter(common_name == "Upland Sandpiper") %>%
   dplyr::select(trends_start_year, trends_end_year, 
                 trends_start_date, trends_end_date)
 
-upsa
+u_runs
 
 ```
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
-uppies_trends <- load_trends("uplsan")
+ebirdst_download_trends("Upland Sandpiper")
 
-(uppies_trends)
+utrends_st <- load_trends("Upland Sandpiper")
 
-write.csv(uppies_trends, file = "C:/Users/ROSALESA/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/Clean/uppies_trends20122022.csv", row.names = FALSE) 
+(utrends_st)
+
+write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
 ```
 
 ## Calculate Abundance for each year (2012-2022)
@@ -90,10 +95,10 @@ $Ay = A2017 × (1 + r)^{y-2017}$
 
 ```{r}
 
-uppies_trends <- uppies_trends %>%
+utrends_st <- utrends_st %>%
   bind_cols(map_dfc(2012:2022, 
-                    ~ tibble(!!paste0("abd_", .x) := uppies_trends$abd * 
-                               (1 + uppies_trends$abd_ppy) ^ (.x - 2017))))
+                    ~ tibble(!!paste0("abd_", .x) := utrends_st$abd * 
+                               (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
 
 
 
@@ -105,12 +110,16 @@ uppies_trends <- uppies_trends %>%
 
 rasterize cumulative trend estimate using `terra` package
 ```{r, include=FALSE}
-trends_raster <- rasterize_trends(uppies_trends, 
-                                  layers = "abd_trend")
+utrends_ras <- rasterize_trends(utrends_st, 
+                                  layers = c("abd_trend"))
+
+crs(utrends_ras) <- "PROJCS[\"Sinusoidal_WGS84\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"WGS_1984\",SPHEROID[\"WGS_84\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Sinusoidal\"],PARAMETER[\"central_meridian\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]"
+
 
 #uses sinusodial projection, may need to create custom CRS definition when bringing into arcpro
-print(trends_raster)
+print(utrends_ras)
 
+crs(utrends_ras)
 
 ```
 
@@ -118,9 +127,9 @@ print(trends_raster)
 ```{r}
 #keep projection and change in arcpro
 #save as a geotiff for use in arcpro
-writeRaster(trends_raster, filename = "C:/Users/ROSALESA/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/Uppies_trends_rasterized2022.tif", overwrite = TRUE)
+writeRaster(utrends_ras, filename = "C:/Users/Andres/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_ras2022.tif", overwrite = TRUE)
 
-plot(trends_raster)
+plot(utrends_ras)
 
 ```
 
@@ -129,20 +138,20 @@ plot(trends_raster)
 load vector of the pixel points 
 
 ```{r}
-trends_pixel <- st_as_sf(uppies_trends,
+utrends_sf <- st_as_sf(utrends_st,
                          coords = c("longitude", "latitude"),
                                     crs = 4326)
 # uses WGS 84 coordinate system (EPSG 4326)
-print(trends_pixel)
+print(utrends_sf)
 ```
 
 
 Export shapefile to path 
 ```{r}
-write_sf(trends_pixel,"C:/Users/ROSALESA/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/pixel_vector20122022.gpkg",
+write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
          layer = "uppies_trends")
 #plot the vector of trend locations using the srd_id (unique code for every pixel)
-plot(trends_pixel["srd_id"])
+plot(utrends_sf["srd_id"])
 ```
 
 

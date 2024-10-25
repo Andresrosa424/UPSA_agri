@@ -3,9 +3,9 @@ title: "eBirdst Script for Chapter 1"
 author: "Andres N. Rosales"
 date: "2024-10-10"
 output:
-  pdf_document:
-    toc: yes
   word_document:
+    toc: yes
+  pdf_document:
     toc: yes
   html_document:
     highlight: espresso
@@ -73,13 +73,13 @@ u_runs
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
-ebirdst_download_trends("Upland Sandpiper")
+ebirdst_download_trends("Upland Sandpiper", force = TRUE)
 
 utrends_st <- load_trends("Upland Sandpiper")
 
 (utrends_st)
 
-write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
+#write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
 ```
 
 ## Calculate Abundance for each year (2012-2022)
@@ -95,10 +95,10 @@ $Ay = A2017 × (1 + r)^{y-2017}$
 
 ```{r}
 
-utrends_st <- utrends_st %>%
-  bind_cols(map_dfc(2012:2022, 
-                    ~ tibble(!!paste0("abd_", .x) := utrends_st$abd * 
-                               (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
+#utrends_st <- utrends_st %>%
+ # bind_cols(map_dfc(2012:2022, 
+                   # ~ tibble(!!paste0("abd_", .x) := utrends_st$abd * 
+                              # (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
 
 
 
@@ -112,9 +112,6 @@ rasterize cumulative trend estimate using `terra` package
 ```{r, include=FALSE}
 utrends_ras <- rasterize_trends(utrends_st, 
                                   layers = c("abd_trend"))
-
-crs(utrends_ras) <- "PROJCS[\"Sinusoidal_WGS84\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"WGS_1984\",SPHEROID[\"WGS_84\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Sinusoidal\"],PARAMETER[\"central_meridian\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]"
-
 
 #uses sinusodial projection, may need to create custom CRS definition when bringing into arcpro
 print(utrends_ras)
@@ -138,11 +135,13 @@ plot(utrends_ras)
 load vector of the pixel points 
 
 ```{r}
-utrends_sf <- st_as_sf(utrends_st,
-                         coords = c("longitude", "latitude"),
-                                    crs = 4326)
+utrends_sf <- st_as_sf(utrends_st, 
+                       coords = c("longitude", "latitude"), 
+                       crs = st_crs("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
+
 # uses WGS 84 coordinate system (EPSG 4326)
 print(utrends_sf)
+crs(utrends_sf)
 ```
 
 

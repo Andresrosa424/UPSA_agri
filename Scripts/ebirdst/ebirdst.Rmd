@@ -154,6 +154,22 @@ plot(utrends_sf["srd_id"])
 ```
 
 
+
+#Status Predictive Importance
+Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables).
+Only top 30 ranked PI are given in the object 'pi'
+```{r}
+ebirdst_download_status("uplsan", download_pis = TRUE)
+
+upsa_pi <- list_available_pis("uplsan")
+print(pi)
+
+pi <- ebirdst_predictors
+pi_des <- ebirdst_predictor_descriptions
+
+```
+
+
 ## Session Info
 ```{r}
 sessionInfo()

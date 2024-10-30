@@ -73,12 +73,13 @@ u_runs
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
-ebirdst_download_trends("Upland Sandpiper", force = TRUE)
+ebirdst_download_trends("Upland Sandpiper")
 
 utrends_st <- load_trends("Upland Sandpiper")
 
 (utrends_st)
 
+# Write a csv of each trend pixel 
 #write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
 ```
 
@@ -102,6 +103,37 @@ $Ay = A2017 × (1 + r)^{y-2017}$
 
 
 
+
+```
+
+
+#Spatial Buffer for predictor grid
+
+Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
+```{r}
+
+utrends_buff <- utrends_st |> 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |>  
+  st_transform(crs = 5070) |>                                   # Transform to NAD 83 (EPSG 5070)
+  st_buffer(dist = 13500)                                        # Create 13.5 km buffers
+
+
+```
+
+
+
+
+#Status Predictive Importance
+Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables).
+Only top 30 ranked PI are given in the object 'pi'
+```{r}
+ebirdst_download_status("uplsan", download_pis = TRUE)
+
+upsa_pi <- list_available_pis("uplsan")
+print(pi)
+
+pi <- ebirdst_predictors
+pi_des <- ebirdst_predictor_descriptions
 
 ```
 
@@ -137,7 +169,7 @@ load vector of the pixel points
 ```{r}
 utrends_sf <- st_as_sf(utrends_st, 
                        coords = c("longitude", "latitude"), 
-                       crs = st_crs("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
+                       crs = st_crs(4326))
 
 # uses WGS 84 coordinate system (EPSG 4326)
 print(utrends_sf)
@@ -149,24 +181,9 @@ Export shapefile to path
 ```{r}
 write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
          layer = "uppies_trends")
+
 #plot the vector of trend locations using the srd_id (unique code for every pixel)
 plot(utrends_sf["srd_id"])
-```
-
-
-
-#Status Predictive Importance
-Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables).
-Only top 30 ranked PI are given in the object 'pi'
-```{r}
-ebirdst_download_status("uplsan", download_pis = TRUE)
-
-upsa_pi <- list_available_pis("uplsan")
-print(pi)
-
-pi <- ebirdst_predictors
-pi_des <- ebirdst_predictor_descriptions
-
 ```
 
 

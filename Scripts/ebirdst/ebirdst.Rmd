@@ -77,10 +77,9 @@ ebirdst_download_trends("Upland Sandpiper")
 
 utrends_st <- load_trends("Upland Sandpiper")
 
-(utrends_st)
 
 # Write a csv of each trend pixel 
-#write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/17_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
+write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
 ```
 
 ## Calculate Abundance for each year (2012-2022)
@@ -145,10 +144,6 @@ rasterize cumulative trend estimate using `terra` package
 utrends_ras <- rasterize_trends(utrends_st, 
                                   layers = c("abd_trend"))
 
-#uses sinusodial projection, may need to create custom CRS definition when bringing into arcpro
-print(utrends_ras)
-
-crs(utrends_ras)
 
 ```
 
@@ -172,18 +167,16 @@ utrends_sf <- st_as_sf(utrends_st,
                        crs = st_crs(4326))
 
 # uses WGS 84 coordinate system (EPSG 4326)
-print(utrends_sf)
-crs(utrends_sf)
+
 ```
 
 
 Export shapefile to path 
 ```{r}
-write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/14_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
+write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
          layer = "uppies_trends")
 
-#plot the vector of trend locations using the srd_id (unique code for every pixel)
-plot(utrends_sf["srd_id"])
+
 ```
 
 

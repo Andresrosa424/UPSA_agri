@@ -179,10 +179,6 @@ write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_
          layer = "ubuff")
 
 overlap <- st_intersection(utrends_buff)
-<<<<<<< HEAD
-write_sf(utrends_buff,"Predictor_buffer/utrends_buff.gpkg", overwrite = TRUE)
-=======
->>>>>>> parent of 221b68d (Revert "Update library/add buffers")
 
 ```
 
@@ -245,12 +241,6 @@ plot(utrends_ras)
 
 ```
 
-
-<<<<<<< HEAD
-
-
-=======
->>>>>>> parent of 221b68d (Revert "Update library/add buffers")
 
 ## Session Info
 ```{r}

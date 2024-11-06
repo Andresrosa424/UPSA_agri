@@ -167,3 +167,30 @@ ggplot(uppies) +
   theme(legend.title = element_text(size = 9), 
         legend.text = element_text(size = 8))
 
+
+
+
+## Calculate Abundance for each year (2012-2022)
+
+Use the equation 
+
+$Ay = A2017 × (1 + r)^{y-2017}$
+  
+  - Ay is the abundance in year y.
+- A2017  is the abundance in 2017 (median year).
+- r is the annual percent change expressed as a decimal.
+- y is the year of interest.
+
+```{r}
+
+#utrends_st <- utrends_st %>%
+# bind_cols(map_dfc(2012:2022, 
+# ~ tibble(!!paste0("abd_", .x) := utrends_st$abd * 
+# (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
+
+
+
+
+```
+
+

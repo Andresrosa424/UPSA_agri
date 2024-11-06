@@ -17,6 +17,13 @@ output:
 
 This code extracts and manipulates eBird status and trends data for the first chapter of my thesis. More infomation and visualizations can be found at <https://science.ebird.org/en/status-and-trends/species/uplsan/trends-map>
 
+```{r}
+#set wd to github folder
+setwd("C:/Users/ROSALESA/Desktop/Analysis/UPSA_agri/Scripts/ebirdst")
+
+```
+
+
 ## Library
 
 ```{r, message=FALSE, warning=FALSE}
@@ -36,9 +43,6 @@ library(ebirdst)
 
 
 ```
-
-
-
 
 
 ## Extract Status and Trend Data
@@ -66,10 +70,11 @@ u_runs <- trend_runs %>%
   filter(common_name == "Upland Sandpiper") %>%
   dplyr::select(trends_start_year, trends_end_year, 
                 trends_start_date, trends_end_date)
-
-u_runs
-
 ```
+
+
+
+
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
@@ -80,28 +85,29 @@ utrends_st <- load_trends("Upland Sandpiper")
 
 # Write a csv of each trend pixel 
 write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
+# Write a csv of each trend pixel 
+write.csv(utrends_st, file = "Data/utrends20122022.csv", row.names = FALSE) 
 ```
 
-## Calculate Abundance for each year (2012-2022)
 
-Use the equation 
-
-$Ay = A2017 × (1 + r)^{y-2017}$
-
-- Ay is the abundance in year y.
-- A2017  is the abundance in 2017 (median year).
-- r is the annual percent change expressed as a decimal.
-- y is the year of interest.
+## Vector of Spatial Trends and Abundance
+load vector of the pixel points 
 
 ```{r}
+utrends_sf <- st_as_sf(utrends_st, 
+                       coords = c("longitude", "latitude"), 
+                       crs = st_crs(4326))
+#Save as a GeoPackage to working directory
+write_sf(utrends_sf,"Trends_sf/utrends_sf2022.gpkg", layer = "uppies_trends")
+```
 
-#utrends_st <- utrends_st %>%
- # bind_cols(map_dfc(2012:2022, 
-                   # ~ tibble(!!paste0("abd_", .x) := utrends_st$abd * 
-                              # (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
-
-
-
+check for the centroid of the study region
+```{r}
+utrends_sf |> 
+  st_union() |> 
+  st_centroid() |> 
+  st_coordinates() |> 
+  round(1)
 
 ```
 
@@ -110,21 +116,54 @@ $Ay = A2017 × (1 + r)^{y-2017}$
 
 Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
 ```{r}
+#I need to make a custom CRS string for EPSP 102008 to use in place of 5070
 
 utrends_buff <- utrends_st |> 
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |>  
   st_transform(crs = 5070) |>                                   # Transform to NAD 83 (EPSG 5070)
   st_buffer(dist = 13500)                                        # Create 13.5 km buffers
 
+ggplot() +
+  geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+
+write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrends_buff.gpkg",
+         layer = "ubuff")
+
+overlap <- st_intersection(utrends_buff)
+write_sf(utrends_buff,"Predictor_buffer/utrends_buff.gpkg", overwrite = TRUE)
 
 ```
 
 
 
 
+## Rasterize Upland Sandpiper trends
+
+rasterize cumulative trend estimate using `terra` package
+```{r, include=FALSE}
+utrends_ras <- rasterize_trends(utrends_st, 
+                                  layers = c("abd_trend"))
+
+
+```
+
+
+```{r}
+#save as a geotiff for use in arcpro
+writeRaster(utrends_ras, filename = "Rasters/utrends_ras2022.tif", overwrite = TRUE)
+
+plot(utrends_ras)
+
+```
+
+
+
 #Status Predictive Importance
 Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables).
-Only top 30 ranked PI are given in the object 'pi'
+Only top 30 ranked PI are given in the object 'pi' These are downloaded to the eBird Directory, not in working directory
 ```{r}
 ebirdst_download_status("uplsan", download_pis = TRUE)
 
@@ -158,26 +197,7 @@ plot(utrends_ras)
 ```
 
 
-## Vector of Spatial Trends and Abundance
-load vector of the pixel points 
 
-```{r}
-utrends_sf <- st_as_sf(utrends_st, 
-                       coords = c("longitude", "latitude"), 
-                       crs = st_crs(4326))
-
-# uses WGS 84 coordinate system (EPSG 4326)
-
-```
-
-
-Export shapefile to path 
-```{r}
-write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
-         layer = "uppies_trends")
-
-
-```
 
 
 ## Session Info

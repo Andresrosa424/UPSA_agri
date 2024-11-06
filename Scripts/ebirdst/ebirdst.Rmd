@@ -40,13 +40,6 @@ library(tinytex)
 library(rmarkdown)
 library(knitr)
 library(ebirdst)
-library(exactextractr)
-library(landscapemetrics)
-library(readr)
-library(stringr)
-library(tidyr)
-library(units)
-library(viridis)
 
 
 ```
@@ -119,56 +112,18 @@ utrends_sf |>
 ```
 
 
-## Vector of Spatial Trends and Abundance
-load vector of the pixel points 
-
-```{r}
-utrends_sf <- st_as_sf(utrends_st, 
-                       coords = c("longitude", "latitude"), 
-                       crs = st_crs(4326))
-
-# uses WGS 84 coordinate system (EPSG 4326)
-
-```
-
-
-Export shapefile to path 
-```{r}
-write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/R/utrends_sf.gpkg",
-         layer = "utrend_22")
-
-
-```
-
-
-
 #Spatial Buffer for predictor grid
-Removed Alaska / Yukon points from utrends_st
-```{r}
-
-utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
-
-```
-
-```{r}
-utrends_sf |> 
-  st_union() |> 
-  st_centroid() |> 
-  st_coordinates() |> 
-  round(1)
-```
-
 
 Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
 ```{r}
 #I need to make a custom CRS string for EPSP 102008 to use in place of 5070
 
-#Set CRS as WGS84 then trasform to NAD83 (same crs as landcover data)
 utrends_buff <- utrends_st |> 
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
-  st_transform(crs = 5070) |>
-  st_buffer(dist = set_units(13.5, "km"))                                        # Create 13.5 km buffers
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |>  
+  st_transform(crs = 5070) |>                                   # Transform to NAD 83 (EPSG 5070)
+  st_buffer(dist = 13500)                                        # Create 13.5 km buffers
 
+<<<<<<< HEAD
 ggplot() +
   geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) +
   theme_minimal() +
@@ -180,6 +135,8 @@ write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_
 
 overlap <- st_intersection(utrends_buff)
 write_sf(utrends_buff,"Predictor_buffer/utrends_buff.gpkg", overwrite = TRUE)
+=======
+>>>>>>> parent of 507d82f (Update library/add buffers)
 
 
 ggplot() +
@@ -249,8 +206,32 @@ plot(utrends_ras)
 ```
 
 
+<<<<<<< HEAD
 =======
 >>>>>>> Stashed changes
+=======
+## Vector of Spatial Trends and Abundance
+load vector of the pixel points 
+
+```{r}
+utrends_sf <- st_as_sf(utrends_st, 
+                       coords = c("longitude", "latitude"), 
+                       crs = st_crs(4326))
+
+# uses WGS 84 coordinate system (EPSG 4326)
+
+```
+
+
+Export shapefile to path 
+```{r}
+write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/utrends_sf2022.gpkg",
+         layer = "uppies_trends")
+
+
+```
+
+>>>>>>> parent of 507d82f (Update library/add buffers)
 
 ## Session Info
 ```{r}

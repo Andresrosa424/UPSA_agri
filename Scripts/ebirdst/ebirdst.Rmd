@@ -182,6 +182,28 @@ overlap <- st_intersection(utrends_buff)
 
 ```
 
+## Spatial Buffer for PHJV
+```{r}
+phjv_sf <- st_read("Trends_sf/utrends_points_phjv.shp") #shapefile of points in NAD83
+
+phjv_buff <- phjv_sf |> 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 5070, remove = FALSE) |>
+  st_buffer(dist = set_units(13.5, "km")) 
+
+
+ggplot() +
+  geom_sf(data = phjv_buff, fill = "lightgreen", color = "darkgreen", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+
+```
+
+## Landcover rasters
+### Canada
+```{r}
+
+```
 
 
 

@@ -91,8 +91,6 @@ utrends_st <- load_trends("Upland Sandpiper")
 
 
 # Write a csv of each trend pixel 
-write.csv(utrends_st, file = "C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/Cornell/eBirdst package/2012-2022/Raw/utrends20122022.csv", row.names = FALSE) 
-# Write a csv of each trend pixel 
 write.csv(utrends_st, file = "Data/utrends20122022.csv", row.names = FALSE) 
 ```
 
@@ -103,43 +101,11 @@ load vector of the pixel points
 ```{r}
 utrends_sf <- st_as_sf(utrends_st, 
                        coords = c("longitude", "latitude"), 
-                       crs = st_crs(4326))
+                       crs = st_crs(4326))                   #set WGS84 as crs
+
 #Save as a GeoPackage to working directory
 write_sf(utrends_sf,"Trends_sf/utrends_sf2022.gpkg", layer = "uppies_trends")
 ```
-
-check for the centroid of the study region
-```{r}
-utrends_sf |> 
-  st_union() |> 
-  st_centroid() |> 
-  st_coordinates() |> 
-  round(1)
-
-```
-
-
-## Vector of Spatial Trends and Abundance
-load vector of the pixel points 
-
-```{r}
-utrends_sf <- st_as_sf(utrends_st, 
-                       coords = c("longitude", "latitude"), 
-                       crs = st_crs(4326))
-
-# uses WGS 84 coordinate system (EPSG 4326)
-
-```
-
-
-Export shapefile to path 
-```{r}
-write_sf(utrends_sf,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/R/utrends_sf.gpkg",
-         layer = "utrend_22")
-
-
-```
-
 
 
 #Spatial Buffer for predictor grid
@@ -150,23 +116,12 @@ utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
 
 ```
 
-```{r}
-utrends_sf |> 
-  st_union() |> 
-  st_centroid() |> 
-  st_coordinates() |> 
-  round(1)
-```
-
 
 Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
 ```{r}
-#I need to make a custom CRS string for EPSP 102008 to use in place of 5070
-
-#Set CRS as WGS84 then trasform to NAD83 (same crs as landcover data)
+#set to 4326 then trnasfomr later during lsm
 utrends_buff <- utrends_st |> 
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
-  st_transform(crs = 5070) |>
   st_buffer(dist = set_units(13.5, "km"))                                        # Create 13.5 km buffers
 
 ggplot() +
@@ -178,8 +133,6 @@ ggplot() +
 write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrends_buff.gpkg",
          layer = "ubuff")
 
-overlap <- st_intersection(utrends_buff)
-
 ```
 
 ## Spatial Buffer for PHJV
@@ -187,7 +140,7 @@ overlap <- st_intersection(utrends_buff)
 phjv_sf <- st_read("Trends_sf/utrends_points_phjv.shp") #shapefile of points in NAD83
 
 phjv_buff <- phjv_sf |> 
-  st_as_sf(coords = c("longitude", "latitude"), crs = 5070, remove = FALSE) |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
   st_buffer(dist = set_units(13.5, "km")) 
 
 

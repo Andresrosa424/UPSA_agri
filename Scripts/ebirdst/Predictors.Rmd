@@ -1,0 +1,60 @@
+---
+title: "Predictors"
+author: "Andres N. Rosales"
+date: "2024-11-11"
+output:
+  html_document:
+    highlight: espresso
+    toc: yes
+    theme: sandstone
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+This code creates spatial buffers using the 'sf' package and calcualtes 
+metrics using the 'landscape metrics package'.
+
+# Library
+```{r}
+
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+library(raster)
+library(terra)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(ebirdst)
+library(exactextractr)
+library(landscapemetrics)
+library(readr)
+library(stringr)
+library(tidyr)
+library(units)
+library(viridis)
+
+```
+
+# PHJV 
+## Load Spatial Buffer
+```{r}
+phjv_sf <- st_read("Trends_sf/utrends_points_phjv.shp") #shapefile should be in WGS43
+
+phjv_buff <- phjv_sf |> 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>  #set as 4326
+  st_buffer(dist = set_units(13.5, "km")) 
+
+
+ggplot() +
+  geom_sf(data = phjv_buff, fill = "lightgreen", color = "darkgreen", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+
+```
+

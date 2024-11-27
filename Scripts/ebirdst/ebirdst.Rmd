@@ -18,8 +18,8 @@ output:
 This code extracts and manipulates eBird status and trends data for the first chapter of my thesis. More infomation and visualizations can be found at <https://science.ebird.org/en/status-and-trends/species/uplsan/trends-map>
 
 ```{r}
-#set wd to github folder
-setwd("C:/Users/ROSALESA/Desktop/Analysis/UPSA_agri/Scripts/ebirdst")
+#set wd to github folder, only for using on ECCC computer
+#setwd("C:/Users/ROSALESA/Desktop/Analysis/UPSA_agri/Scripts/ebirdst")
 
 ```
 
@@ -149,15 +149,14 @@ ggplot() +
   theme_minimal() +
   labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
 
+#save to onedrive
+write_sf(phjv_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrd_buff_PHJV.gpkg",
+         layer = "ubuffPHJV")
 
+#save to WD. THis is the buffer I will use for PHJV analysis and for GEOG project
+write_sf(phjv_buff,"Predictor_buffer/utrd_buff_PHJV.gpkg",
+         layer = "ubuffPHJV")
 ```
-
-## Landcover rasters
-### Canada
-```{r}
-
-```
-
 
 
 ## Rasterize Upland Sandpiper trends

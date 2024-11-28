@@ -59,8 +59,8 @@ op <- options_landscapemetrics()
 
 
 
+Load Canada rasters classified for composition and configuration metrics. These rasters are classified by 17 simple land cover classifications.
 ```{r}
-#Load Canada rasters classified for composition metrics. These rasters are classified for compositon metrics and is only land cover for Canada.
 can_rasters <- list(
   "2012" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2012.tif"),
   "2013" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2013.tif"),
@@ -74,44 +74,99 @@ can_rasters <- list(
   "2021" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2021.tif"),
   "2022" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2022.tif")
 )
+
 ```
 
+
+Create table of all classifications and their respective labels
 ```{r}
-#calcualte lsm for 2012 for pland and ed (need to change to all years and change metrics)
-lsm_pg <- NULL
-for (i in seq_len(nrow(phjv_buff))) {
-  buffer_i <- st_transform(phjv_buff[i, ], crs = crs(can_rasters[["2012"]]))
-  
-  # Crop and mask the landcover raster so all values outside buffer are missing
-  lsm_pg[[i]] <- crop(can_rasters[["2012"]], buffer_i) |> 
-    mask(buffer_i) |> 
-    # Calculate landscape metrics
-    calculate_lsm(level = "class", metric = c("pland", "ed")) |> 
-    # Add variable to uniquely identify each point
-    mutate(srd_id = buffer_i$srd_id) |> 
-    dplyr::select(srd_id, class, metric, value)
+lc_classes <- data.frame(
+  class = 1:17,
+  label = c("Cereal", "Pulses", "Canola", "Soybean", "Oilseed", "Potatoes", 
+            "Berries", "Fruits and Vegetables", "Forage", "Other Ag", 
+            "Grassland", "Shrubland", "Wetland", "Forested", "Barren", 
+            "Urban", "Water"),
+  stringsAsFactors = FALSE)
+
+lc_classes
+```
+
+
+Run landscape metrics for landscapes within each estimate buffer. 
+Two metrics calculated at the class level: "pland" - Proportions of each land cover type and "lpi" - large patch index.
+Four metrics at the landscape level: "SHDI" - Shannon diversity index, "ed" - Edge density, "pd" - Patch density, "ai" - aggregation index, "Cohesion" - Patch cohesion index
+```{r}
+
+# Initialize an empty list to store results
+lsm_pg <- list()
+
+# Loop through each year and buffer, this will result in a very large list. Takes ~6 hours to run
+for (year in names(can_rasters)) {
+  for (i in seq_len(nrow(phjv_buff))) {
+    # Transform the buffer to match the raster's CRS
+    buffer_i <- st_transform(phjv_buff[i, ], crs = crs(can_rasters[[year]]))
+    
+    # Crop and mask the landcover raster for the current year
+    class_metrics <- crop(can_rasters[[year]], buffer_i) |> 
+      mask(buffer_i) |> 
+      # Calculate class-level metrics
+      calculate_lsm(level = "class", metric = c("pland","lpi", "area_mn")) |> 
+      # Add variables to uniquely identify each point and year
+      mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
+    
+    landscape_metrics <- crop(can_rasters[[year]], buffer_i) |> 
+      mask(buffer_i) |> 
+      # Calculate landscape-level metrics
+      calculate_lsm(level = "landscape", metric = c("shdi", "ed", "pd", "ai", "cohesion")) |> 
+      # Add variables to uniquely identify each point and year
+      mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
+    
+    # Combine class-level and landscape-level metrics
+    lsm_pg[[paste(year, i, sep = "_")]] <- bind_rows(class_metrics, landscape_metrics) |> 
+      dplyr::select(year, srd_id, class, metric, value)
+  }
 }
 
 # Combine results into a single data frame
 lsm_pg <- bind_rows(lsm_pg)
 
 
+```
 
-# transform to wide format 
-lsm_wide_pg <- lsm_pg |> 
-  # fill missing classes with zeros
-  complete(srd_id,
-           class = lc_classes$class,
-           metric = c("ed", "pland"),
-           fill = list(value = 0)) |> 
-  # bring in more descriptive names
-  inner_join(select(lc_classes, class, label), by = "class") |> 
-  # transform from long to wide format
-  pivot_wider(values_from = value,
-              names_from = c(class, label, metric),
-              names_glue = "{metric}_c{str_pad(class, 2, pad = '0')}_{label}",
-              names_sort = TRUE,
-              values_fill = 0) |> 
-  arrange(srd_id)
+Transform data to wide format.
+```{r}
+
+# Updated code to transform to wide format
+phjv_lsm <- lsm_pg |> 
+  # Fill missing combinations with zeros
+  complete(
+    year,                        # Include all years
+    srd_id,                      # Ensure all buffers are represented
+    class = unique(lc_classes$class), # Ensure all classes are included
+    metric = c("pland", "lpi"), # Include all metrics
+    fill = list(value = 0)       # Fill missing values with zeros
+  ) |> 
+  # Join with descriptive class labels
+  left_join(dplyr::select(lc_classes, class, label), by = "class") |> 
+  # Transform to wide format
+  pivot_wider(
+    values_from = value,                          # Metric values to populate wide-format table
+    names_from = c(class, label, metric),   # Columns formed by year, class, label, and metric
+    names_glue = "{metric}_c{str_pad(class, 2, pad = '0')}_{label}", # Format names
+    names_sort = TRUE,                            # Ensure logical sorting of columns
+    values_fill = 0                               # Fill missing combinations with zeros
+  ) |> 
+  arrange(srd_id)                           # Sort rows by year and buffer ID
+
+```
+
+Save output landscape metrics
+```{r}
+#save as RDS
+saveRDS(phjv_lsm, "Data/phjv_lsm.rds")
+
+#save a CSV 
+write.csv(phjv_lsm, "Data/phjv_lsm.csv", row.names = FALSE)
+
 ```
 

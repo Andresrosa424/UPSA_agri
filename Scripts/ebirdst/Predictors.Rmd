@@ -130,6 +130,9 @@ for (year in names(can_rasters)) {
 # Combine results into a single data frame
 lsm_pg <- bind_rows(lsm_pg)
 
+#save as RDS
+saveRDS(lsm_pg, "Data/phjv_lsm_long.rds")
+
 
 ```
 
@@ -168,5 +171,153 @@ saveRDS(phjv_lsm, "Data/phjv_lsm.rds")
 #save a CSV 
 write.csv(phjv_lsm, "Data/phjv_lsm.csv", row.names = FALSE)
 
+```
+
+
+## Add ebird data to phjv_lsm data frame
+```{r}
+
+#Load PHJV buffers we made in the ebirdst.rmd file
+phjv_buff <- st_read("Predictor_buffer/utrd_buff_PHJV.gpkg", layer = "ubuffPHJV") #shapefile should be in WGS43
+
+phjv_buff <- st_drop_geometry(phjv_buff)  # Temporarily drop geometry for the join
+#remove unnessecary columns
+phjv_buff <- phjv_buff[, -c(1:6, 16:23)]
+
+```
+
+
+Calculate annual abundance
+
+$Ay = A2017 × (1 + r)^{y-2017}$
+
+- Ay is the abundance in year y.
+- A2017  is the abundance in 2017 (median year).
+- r is the annual percent change expressed as a decimal.
+- y is the year of interest.
+
+```{r}
+#annual abundance estimates
+phjv_buff <- phjv_buff %>%
+  bind_cols(map_dfc(2012:2022, 
+                    ~ tibble(!!paste0( .x) := phjv_buff$abd * 
+                               (1 + phjv_buff$abd_ppy) ^ (.x - 2017))))
+#remove abd column since this is only the abd for the median year
+phjv_buff <- phjv_buff[, -c(4)]
+
+
+```
+
+
+Subset estimates with >80% confidence
+```{r}
+phjv_buff <- subset(phjv_buff, abd_ppy_no == "TRUE")
+
+```
+
+Pivot phjv_buff to long for easier rbind
+```{r}
+phjv_long <- phjv_buff %>%
+  pivot_longer(
+    cols = starts_with("20"), # Select columns that start with 'abd_20'
+    names_to = "year",            # Name of the new column for years
+    values_to = "abd"             # Name of the new column for the annual abundance values
+  ) %>%
+  arrange(srd_id, year)
+```
+
+
+R bind phjv_buff to phjv_lsm to have a final dataset to model
+```{r}
+phjv_long <- phjv_long %>%
+  mutate(
+    year = as.integer(year),
+    srd_id = as.integer(srd_id)
+  )
+
+phjv_lsm <- phjv_lsm %>%
+  mutate(
+    year = as.integer(year),
+    srd_id = as.integer(srd_id)
+  )
+
+phjv_lsm_final <- phjv_long %>%
+  left_join(phjv_lsm, by = c("srd_id", "year"))
+
+```
+
+
+
+
+#Model trend and abundance as a function of landscape metrics
+Calcualte and plot correlation matrix
+```{r}
+library(ggcorrplot)
+library(dplyr)
+
+# List of predictors to include
+predictors <- c(
+  "pland_c01_Cereal", "pland_c02_Pulses", "pland_c03_Canola", "pland_c04_Soybean", 
+  "pland_c05_Oilseed", "pland_c06_Potatoes", "pland_c07_Berries", "pland_c08_Fruits.and.Vegetables", 
+  "pland_c09_Forage", "pland_c10_Other.Ag", "lpi_c11_Grassland", "pland_c11_Grassland", 
+  "pland_c12_Shrubland", "pland_c13_Wetland", "pland_c14_Forested", "pland_c15_Barren", 
+  "pland_c16_Urban", "pland_c17_Water", "ai_cNA_NA", "cohesion_cNA_NA", "ed_cNA_NA", 
+  "pd_cNA_NA", "shdi_cNA_NA"
+)
+
+# Filter dataset
+filtered_data <- phjv_lsm_final %>%
+  dplyr::select(all_of(predictors))
+
+# Compute correlation matrix
+cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
+
+# Visualize the correlation matrix
+ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
+```
+
+
+```{r}
+# Select only pland variables
+pland_vars <- c(
+  "pland_c01_Cereal", "pland_c02_Pulses", "pland_c03_Canola", "pland_c04_Soybean", 
+  "pland_c05_Oilseed", "pland_c06_Potatoes", "pland_c07_Berries", 
+  "pland_c08_Fruits.and.Vegetables", "pland_c09_Forage", "pland_c10_Other.Ag", 
+  "pland_c11_Grassland", "pland_c12_Shrubland", "pland_c13_Wetland", 
+  "pland_c14_Forested", "pland_c15_Barren", "pland_c16_Urban", "pland_c17_Water", "lpi_c11_Grassland"
+)
+
+# Filter dataset for pland variables
+pland_data <- phjv_lsm_final[, pland_vars]
+
+# Compute the correlation matrix
+pland_cor <- cor(pland_data, use = "complete.obs", method = "pearson")
+
+
+# Visualize correlations with pairs plot
+pairs(
+  pland_data, 
+  main = "Pairwise Scatterplots for pland Variables",
+  pch = 19,  # Solid circles for points
+  cex = 0.5  # Reduce point size for clarity
+)
+```
+
+
+
+
+```{r}
+library(lme4)
+
+names(phjv_lsm_final)
+
+cor(phjv_lsm_final[c("shdi_cNA_NA", "ai_cNA_NA", "pd_cNA_NA", "ed_cNA_NA", "cohesion_cNA_NA", "lpi_c11_Grassland" )])
+pairs(phjv_lsm_final[c("shdi_cNA_NA", "ai_cNA_NA", "pd_cNA_NA", "ed_cNA_NA", "cohesion_cNA_NA")])
+
+# Model abundance as a function of SHDI and other predictors
+model <- lmer(abd_trend ~ shdi_cNA_NA + ai_cNA_NA + cohesion_cNA_NA + lpi_c11_Grassland + (1 | srd_id) + (1 | year), 
+              data = phjv_lsm_final)
+
+summary(model)
 ```
 

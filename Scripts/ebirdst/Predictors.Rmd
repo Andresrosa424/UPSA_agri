@@ -249,7 +249,7 @@ phjv_lsm_final <- phjv_long %>%
 
 
 
-#Model trend and abundance as a function of landscape metrics
+# Model trend and abundance as a function of landscape metrics
 Calcualte and plot correlation matrix
 ```{r}
 library(ggcorrplot)
@@ -257,12 +257,8 @@ library(dplyr)
 
 # List of predictors to include
 predictors <- c(
-  "pland_c01_Cereal", "pland_c02_Pulses", "pland_c03_Canola", "pland_c04_Soybean", 
-  "pland_c05_Oilseed", "pland_c06_Potatoes", "pland_c07_Berries", "pland_c08_Fruits.and.Vegetables", 
-  "pland_c09_Forage", "pland_c10_Other.Ag", "lpi_c11_Grassland", "pland_c11_Grassland", 
-  "pland_c12_Shrubland", "pland_c13_Wetland", "pland_c14_Forested", "pland_c15_Barren", 
-  "pland_c16_Urban", "pland_c17_Water", "ai_cNA_NA", "cohesion_cNA_NA", "ed_cNA_NA", 
-  "pd_cNA_NA", "shdi_cNA_NA"
+   "lpi_c11_Grassland", "ai_cNA_NA", "cohesion_cNA_NA", "ed_cNA_NA", 
+  "pd_cNA_NA", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c01_Cereal"
 )
 
 # Filter dataset
@@ -276,7 +272,7 @@ cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
 ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
 ```
 
-
+Land cover proportions correlation
 ```{r}
 # Select only pland variables
 pland_vars <- c(
@@ -302,6 +298,119 @@ pairs(
   cex = 0.5  # Reduce point size for clarity
 )
 ```
+
+
+
+# Parallel Coordinate plot 
+Subset phjv lsm final to 2022 to visualize with parallel coordinate plot
+```{r}
+
+phjv_lsm_22 <- subset(phjv_lsm_final, year == "2022")
+
+```
+
+
+```{r}
+# Subset the data to include the required variables
+library(dplyr)
+df_subset <- phjv_lsm_22 %>% 
+  select(abd, abd_trend, , lpi_c11_Grassland, shdi_cNA_NA, cohesion_cNA_NA, ai_cNA_NA, lpi_c09_Forage, pland_c09_Forage, pland_c01_Cereal )
+
+# Normalize the data (scale to 0-1 for PCP visualization)
+df_normalized <- as.data.frame(lapply(df_subset, function(x) (x - min(x)) / (max(x) - min(x))))
+
+```
+
+
+
+```{r}
+# Install plotly if not installed
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+
+library(plotly)
+
+plot_ly(
+  type = 'parcoords',
+  line = list(
+    color = df_normalized$abd_trend,  # Color by trend for better visual distinction
+    colorscale = 'Viridis'
+  ),
+  dimensions = list(
+    list(label = "Abundance", values = df_normalized$abd),
+    list(label = "Trend", values = df_normalized$abd_trend),
+    list(label = "Cereal Proportion", values = df_normalized$pland_c01_Cereal),
+    list(label = "Grassland LPI", values = df_normalized$lpi_c11_Grassland),
+    list(label = "Forage LPI", values = df_normalized$lpi_c09_Forage),
+    list(label = "SHDI", values = df_normalized$shdi_cNA_NA),
+    list(label = "AI", values = df_normalized$ai_cNA_NA),
+    list(label = "Cohesion", values = df_normalized$cohesion_cNA_NA)
+  )
+) %>%
+  layout(
+    paper_bgcolor = 'rgba(0,0,0,0)',  # Transparent background
+    plot_bgcolor = 'rgba(0,0,0,0)'   # Transparent plot area
+  )
+
+
+```
+
+Box plot for groups of trends increasing vs decreasing
+
+```{r}
+phjv_lsm_dir <- phjv_lsm_22
+
+phjv_lsm_dir$dir <- NA
+
+phjv_lsm_dir$dir <- ifelse(phjv_lsm_dir$abd_trend >= 0, "Positive", "Negative")
+
+```
+
+
+box plot
+```{r}
+
+library(ggplot2)
+
+# Create the plot
+ggplot(phjv_lsm_dir, aes(x = dir, y = pland_c01_Cereal, fill = dir)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +  # Boxplot with semi-transparent fill and no outliers
+  geom_jitter(width = 0.2, size = 1, alpha = 0.5, aes(color = dir)) +  # Jittered points for individual observations
+  labs(
+    title = "Boxplot of Cereal proportions by trend direction",
+    x = "Direction (Positive or Negative)",
+    y = "pland_c01_Cereal"
+  ) +
+  theme_minimal() +  # Minimal theme
+  theme(
+    panel.background = element_rect(fill = "transparent", color = NA),  # Transparent background
+    plot.background = element_rect(fill = "transparent", color = NA)
+  ) +
+  scale_fill_manual(values = c("Negative" = "#FF6666", "Positive" = "#66B3FF")) +  # Custom box colors
+  scale_color_manual(values = c("Negative" = "#FF6666", "Positive" = "#66B3FF"))  # Matching jitter colors
+
+
+```
+
+```{r}
+t_test_result <- t.test(pland_c01_Cereal ~ dir, data = phjv_lsm_dir)
+
+# View the result
+print(t_test_result)
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

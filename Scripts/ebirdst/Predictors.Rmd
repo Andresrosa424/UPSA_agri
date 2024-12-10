@@ -205,11 +205,17 @@ phjv_lsm_comp <- lsm_comp |>
 Save output landscape metrics
 ```{r}
 #save as RDS
-saveRDS(phjv_lsm_comp, "Data/phjv_lsm.rds")
+saveRDS(phjv_lsm_comp, "Data/phjv_lsm_comp.rds")
 
 #save a CSV 
-write.csv(phjv_lsm_comp, "Data/phjv_lsm.csv", row.names = FALSE)
+write.csv(phjv_lsm_comp, "Data/phjv_lsm_comp.csv", row.names = FALSE)
 
+```
+
+
+Load phjv Composition metrics
+```{r}
+phjv_lsm_comp <- readRDS("Data/phjv_lsm_comp.rds")
 ```
 
 
@@ -304,9 +310,33 @@ phjv_lsm_simp <- lsm_simp |>
 ```
 
 
+Save output Simplification landscape metrics
+```{r}
+#save as RDS
+saveRDS(phjv_lsm_simp, "Data/phjv_lsm_simp.rds")
+
+#save a CSV 
+write.csv(phjv_lsm_comp, "Data/phjv_lsm_simp.csv", row.names = FALSE)
+
+```
+
+
+Load phjv Composition metrics
+```{r}
+phjv_lsm_simp <- readRDS("Data/phjv_lsm_simp.rds")
+```
+
+
+
+---
+
 
 ## Add ebird data to phjv_lsm_comp and phjv_lsm_simp data frames
 ```{r}
+#Load PHJV buffers we made in the ebirdst.rmd file
+phjv_buff <- st_read("Predictor_buffer/utrd_buff_PHJV.gpkg", layer = "ubuffPHJV") #shapefile should be in WGS43
+
+
 # Temporarily drop geometry for the join
 phjv_buff <- st_drop_geometry(phjv_buff)  
 
@@ -316,11 +346,40 @@ phjv_buff <- phjv_buff[, -c(1:6, 16:23)]
 ```
 
 
+Calculate annual abundance
+
+$Ay = A2017 × (1 + r)^{y-2017}$
+
+- Ay is the abundance in year y.
+- A2017  is the abundance in 2017 (median year).
+- r is the annual percent change expressed as a decimal.
+- y is the year of interest.
+
+```{r}
+#annual abundance estimates
+phjv_buff <- phjv_buff %>%
+  bind_cols(map_dfc(2012:2022, 
+                    ~ tibble(!!paste0( .x) := phjv_buff$abd * 
+                               (1 + phjv_buff$abd_ppy) ^ (.x - 2017))))
+#remove abd column since this is only the abd for the median year
+phjv_buff <- phjv_buff[, -c(4)]
+
+
+```
+
+
+Subset estimates with >80% confidence
+```{r}
+phjv_buff <- subset(phjv_buff, abd_ppy_no == "TRUE")
+
+```
+
+
 Pivot phjv_buff to long for easier rbind
 ```{r}
 phjv_long <- phjv_buff %>%
   pivot_longer(
-    cols = starts_with("20"), # Select columns that start with 'abd_20'
+    cols = dplyr::starts_with("20"), # Select columns that start with 'abd_20'
     names_to = "year",            # Name of the new column for years
     values_to = "abd"             # Name of the new column for the annual abundance values
   ) %>%
@@ -329,23 +388,13 @@ phjv_long <- phjv_buff %>%
 
 
 
-Combine comp and simp landscape metric cols
 ```{r}
-
+simp_comp <- phjv_lsm_comp %>%    #phjv_lsm_comp has all estimates, since it wasnt subset by abd_ppy_no
+  left_join(phjv_lsm_simp, by = c("srd_id", "year"))
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-R bind phjv_buff to phjv_lsm to have a final dataset to model
+R bind phjv_buff to phjv_lsm to have a final data set to model
 ```{r}
 phjv_long <- phjv_long %>%
   mutate(
@@ -353,30 +402,58 @@ phjv_long <- phjv_long %>%
     srd_id = as.integer(srd_id)
   )
 
-phjv_lsm <- phjv_lsm %>%
+simp_comp <- simp_comp %>%
   mutate(
     year = as.integer(year),
     srd_id = as.integer(srd_id)
   )
 
 phjv_lsm_final <- phjv_long %>%
-  left_join(phjv_lsm, by = c("srd_id", "year"))
+  left_join(simp_comp, by = c("srd_id", "year"))
 
 ```
 
 
+---
 
 
-# Model trend and abundance as a function of landscape metrics
-Calcualte and plot correlation matrix
+# Predicor Correlations
 ```{r}
 library(ggcorrplot)
 library(dplyr)
+library(ggplot2)
+library(reshape2)  
 
+
+
+# Select only the columns with "pland" 
+pland_cols <- phjv_lsm_final %>%
+  dplyr::select(contains("pland"))
+
+# Calculate Pearson's correlation matrix
+correlation_matrix <- cor(pland_cols, use = "pairwise.complete.obs", method = "pearson")
+
+# Reshape the correlation matrix for ggplot2
+correlation_melted <- melt(correlation_matrix)
+
+# Plot the correlation matrix
+ggplot(data = correlation_melted, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name = "Pearson\nCorrelation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_fixed() +
+  labs(title = "Correlation Matrix of Crop Proportions Metrics",
+       x = "Variables",
+       y = "Variables")
+```
+
+```{r}
 # List of predictors to include
 predictors <- c(
-   "lpi_c11_Grassland", "ai_cNA_NA", "cohesion_cNA_NA", "ed_cNA_NA", 
-  "pd_cNA_NA", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c01_Cereal"
+   "lpi_c11_Grassland", "ai_cNA_NA", "cohesion_cNA_NA", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c02_Ag"
 )
 
 # Filter dataset
@@ -390,36 +467,120 @@ cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
 ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
 ```
 
-Land cover proportions correlation
+# Outliers
+
 ```{r}
-# Select only pland variables
-pland_vars <- c(
-  "pland_c01_Cereal", "pland_c02_Pulses", "pland_c03_Canola", "pland_c04_Soybean", 
-  "pland_c05_Oilseed", "pland_c06_Potatoes", "pland_c07_Berries", 
-  "pland_c08_Fruits.and.Vegetables", "pland_c09_Forage", "pland_c10_Other.Ag", 
-  "pland_c11_Grassland", "pland_c12_Shrubland", "pland_c13_Wetland", 
-  "pland_c14_Forested", "pland_c15_Barren", "pland_c16_Urban", "pland_c17_Water", "lpi_c11_Grassland"
-)
+ggplot(phjv_lsm_final, aes(y = abd_trend)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of abd_trend", y = "Trend in Abundance", x = "") +
+  theme_minimal()
 
-# Filter dataset for pland variables
-pland_data <- phjv_lsm_final[, pland_vars]
+ggplot(phjv_lsm_final, aes(y = abd)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of abundance", y = "Abundance", x = "") +
+  theme_minimal()
 
-# Compute the correlation matrix
-pland_cor <- cor(pland_data, use = "complete.obs", method = "pearson")
-
-
-# Visualize correlations with pairs plot
-pairs(
-  pland_data, 
-  main = "Pairwise Scatterplots for pland Variables",
-  pch = 19,  # Solid circles for points
-  cex = 0.5  # Reduce point size for clarity
-)
 ```
 
 
 
-# Parallel Coordinate plot 
+# Normality test
+Trend
+```{r}
+shapiro.test(phjv_lsm_final$abd_trend)
+
+hist(phjv_lsm_final$abd_trend, main = "Histogram of trend", xlab = "abd_trend")
+
+qqnorm(phjv_lsm_final$abd_trend)
+qqline(phjv_lsm_final$abd_trend, col = "red")
+
+
+library(e1071)
+skewness(phjv_lsm_final$abd_trend)
+kurtosis(phjv_lsm_final$abd_trend)
+
+
+
+```
+
+
+abundance
+```{r}
+hist(phjv_lsm_final$abd, main = "Distribution of Abundance", xlab = "Abundance")
+
+shapiro.test(phjv_lsm_final$abd)
+
+
+qqnorm(phjv_lsm_final$abd)
+qqline(phjv_lsm_final$abd, col = "red")
+
+```
+
+
+
+
+
+# GLMM
+```{r}
+library(lme4)
+library(Matrix)
+
+names(phjv_lsm_final)
+```
+
+Abundance with year fixed effect
+```{r}
+library(lme4)
+model1 <- lmer(abd ~ shdi_cNA_NA + ai_cNA_NA + lpi_c11_Grassland + lpi_c09_Forage + pland_c02_Ag + year + (1 | srd_id) , data = phjv_lsm_final)
+
+qqnorm(residuals(model1))
+qqline(residuals(model1), col = "red")
+hist(residuals(model1))
+
+plot(fitted(model1), residuals(model1), 
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+```
+
+Trend with year interaction
+```{r}
+
+year_int_model <- lmer(abd ~ shdi_cNA_NA * year + ai_cNA_NA * year + lpi_c11_Grassland * year + lpi_c09_Forage * year + pland_c02_Ag * year + (1 | srd_id), data = phjv_lsm_final)
+
+qqnorm(residuals(year_int_model))
+qqline(residuals(year_int_model), col = "red")
+hist(residuals(year_int_model))
+
+plot(fitted(year_int_model), residuals(year_int_model), 
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+
+
+```
+
+basic lm
+```{r}
+# Model abundance as a function of SHDI and other predictors
+model <- lm(abd_trend ~ shdi_cNA_NA + ai_cNA_NA + lpi_c11_Grassland + lpi_c09_Forage + pland_c02_Ag, 
+              data = phjv_lsm_final)
+
+summary(model)
+```
+
+Basic lm with year interaction
+```{r}
+# Model abundance as a function of SHDI and other predictors
+fixedsrd_model <- lm(abd ~ shdi_cNA_NA * year + ai_cNA_NA * year + lpi_c11_Grassland * year + lpi_c09_Forage * year + pland_c02_Ag * year , 
+              data = phjv_lsm_final)
+
+summary(fixedsrd_model)
+```
+
+
+
+# GEOG 822 Exploratory Analysis
 Subset phjv lsm final to 2022 to visualize with parallel coordinate plot
 ```{r}
 
@@ -432,7 +593,7 @@ phjv_lsm_22 <- subset(phjv_lsm_final, year == "2022")
 # Subset the data to include the required variables
 library(dplyr)
 df_subset <- phjv_lsm_22 %>% 
-  select(abd, abd_trend, , lpi_c11_Grassland, shdi_cNA_NA, cohesion_cNA_NA, ai_cNA_NA, lpi_c09_Forage, pland_c09_Forage, pland_c01_Cereal )
+  dplyr::select(abd, abd_trend, , lpi_c11_Grassland, shdi_cNA_NA, cohesion_cNA_NA, ai_cNA_NA, lpi_c09_Forage, pland_c09_Forage, pland_c01_Cereal )
 
 # Normalize the data (scale to 0-1 for PCP visualization)
 df_normalized <- as.data.frame(lapply(df_subset, function(x) (x - min(x)) / (max(x) - min(x))))
@@ -442,10 +603,6 @@ df_normalized <- as.data.frame(lapply(df_subset, function(x) (x - min(x)) / (max
 
 
 ```{r}
-# Install plotly if not installed
-if (!requireNamespace("plotly", quietly = TRUE)) {
-  install.packages("plotly")
-}
 
 library(plotly)
 
@@ -514,33 +671,4 @@ t_test_result <- t.test(pland_c01_Cereal ~ dir, data = phjv_lsm_dir)
 print(t_test_result)
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-library(lme4)
-
-names(phjv_lsm_final)
-
-cor(phjv_lsm_final[c("shdi_cNA_NA", "ai_cNA_NA", "pd_cNA_NA", "ed_cNA_NA", "cohesion_cNA_NA", "lpi_c11_Grassland" )])
-pairs(phjv_lsm_final[c("shdi_cNA_NA", "ai_cNA_NA", "pd_cNA_NA", "ed_cNA_NA", "cohesion_cNA_NA")])
-
-# Model abundance as a function of SHDI and other predictors
-model <- lmer(abd_trend ~ shdi_cNA_NA + ai_cNA_NA + cohesion_cNA_NA + lpi_c11_Grassland + (1 | srd_id) + (1 | year), 
-              data = phjv_lsm_final)
-
-summary(model)
-```
 

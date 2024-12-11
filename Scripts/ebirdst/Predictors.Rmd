@@ -7,9 +7,9 @@ output:
     highlight: espresso
     toc: yes
     theme: sandstone
-  pdf_document:
-    toc: yes
   word_document:
+    toc: yes
+  pdf_document:
     toc: yes
 ---
 
@@ -134,7 +134,7 @@ lc_classes
 Run landscape metrics for landscapes within each estimate buffer. 
 Two metrics calculated at the class level: "pland" - Proportions of each land cover type and "lpi" - large patch index.
 Four metrics at the landscape level: "SHDI" - Shannon diversity index, "ed" - Edge density, "pd" - Patch density, "ai" - aggregation index, "Cohesion" - Patch cohesion index
-```{r}
+```{r, eval=FALSE}
 
 # Initialize an empty list to store results
 lsm_comp <- list()
@@ -176,7 +176,7 @@ saveRDS(lsm_comp, "Data/phjv_lsm_long.rds")
 ```
 
 Transform data to wide format.
-```{r}
+```{r, eval=FALSE}
 
 # Updated code to transform to wide format
 phjv_lsm_comp <- lsm_comp |> 
@@ -203,7 +203,7 @@ phjv_lsm_comp <- lsm_comp |>
 ```
 
 Save output landscape metrics
-```{r}
+```{r, eval=FALSE}
 #save as RDS
 saveRDS(phjv_lsm_comp, "Data/phjv_lsm_comp.rds")
 
@@ -252,7 +252,7 @@ simp_classes
 ```
 
 Run landscape metrics
-```{r}
+```{r, eval=FALSE}
 lsm_simp <- list()
 
 # Loop through each year in the raster list
@@ -283,7 +283,7 @@ print(lsm_simp)
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 
 # Updated code to transform to wide format
 phjv_lsm_simp <- lsm_simp |> 
@@ -311,7 +311,7 @@ phjv_lsm_simp <- lsm_simp |>
 
 
 Save output Simplification landscape metrics
-```{r}
+```{r, eval=FALSE}
 #save as RDS
 saveRDS(phjv_lsm_simp, "Data/phjv_lsm_simp.rds")
 
@@ -321,7 +321,7 @@ write.csv(phjv_lsm_comp, "Data/phjv_lsm_simp.csv", row.names = FALSE)
 ```
 
 
-Load phjv Composition metrics
+Load phjv Simplification metrics
 ```{r}
 phjv_lsm_simp <- readRDS("Data/phjv_lsm_simp.rds")
 ```

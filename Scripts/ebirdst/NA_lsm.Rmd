@@ -1,0 +1,338 @@
+---
+title: "rangewide-lsm"
+author: "Andres N. Rosales"
+date: "2025-01-13"
+output:
+  html_document:
+    highlight: espresso
+    toc: yes
+    theme: sandstone
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+# Library
+```{r, message=FALSE, warning=FALSE}
+
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+library(raster)
+library(terra)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(ebirdst)
+library(exactextractr)
+library(landscapemetrics)
+library(readr)
+library(stringr)
+library(tidyr)
+library(units)
+library(viridis)
+library(progress)
+library(dplyr)
+
+```
+
+
+Create an object of Upland Sandpiper trends (2012-2022). 
+```{r}
+
+utrends_st <- load_trends("Upland Sandpiper")
+
+```
+
+#Spatial Buffer for predictor grid
+Removed Alaska / Yukon points from utrends_st
+```{r}
+
+utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
+
+```
+
+Calculate annual abundance
+
+$Ay = A2017 × (1 + r)^{y-2017}$
+
+- Ay is the abundance in year y.
+- A2017  is the abundance in 2017 (median year).
+- r is the annual percent change expressed as a decimal.
+- y is the year of interest.
+
+```{r}
+#annual abundance estimates
+utrends_st <- utrends_st %>%
+  bind_cols(map_dfc(2012:2022, 
+                    ~ tibble(!!paste0( .x) := utrends_st$abd * 
+                               (1 + utrends_st$abd_ppy) ^ (.x - 2017))))
+#remove abd column since this is only the abd for the median year
+utrends_st <- utrends_st[, -c(4)]
+
+
+```
+
+
+Subset estimates with >80% confidence
+```{r}
+utrends_st <- subset(utrends_st, abd_ppy_nonzero == "TRUE")
+
+```
+
+
+Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
+```{r}
+#set to 4326 then trnasfomr later during lsm
+utrends_buff <- utrends_st |> 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
+  st_buffer(dist = set_units(13.5, "km"))                                        # Create 13.5 km buffers
+
+ggplot() +
+  geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+
+write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrends_buff.gpkg",
+         layer = "ubuff")
+
+```
+
+
+## Composition Rasters
+Load North America rasters classified for composition and configuration metrics. These rasters are classified by 17 simple land cover classifications.
+```{r}
+NA_comp_rasters <- list(
+  "2012" = rast("Rasters/NA_comp_2012.tif"),
+  "2013" = rast("Rasters/NA_comp_2013.tif"),
+  "2014" = rast("Rasters/NA_comp_2014.tif"),
+  "2015" = rast("Rasters/NA_comp_2015.tif"),
+  "2016" = rast("Rasters/NA_comp_2016.tif"),
+  "2017" = rast("Rasters/NA_comp_2017.tif"),
+  "2018" = rast("Rasters/NA_comp_2018.tif"),
+  "2019" = rast("Rasters/NA_comp_2019.tif"),
+  "2020" = rast("Rasters/NA_comp_2020.tif"),
+  "2021" = rast("Rasters/NA_comp_2021.tif"),
+  "2022" = rast("Rasters/NA_comp_2022.tif")
+)
+
+```
+
+
+```{r}
+check <- rast("Rasters/NA_comp_2012.tif")
+
+check_landscape(check)
+```
+
+
+Create table of all classifications and their respective labels
+```{r}
+lc_classes <- data.frame(
+  class = 1:17,
+  label = c("Cereal", "Pulses", "Canola", "Soybean", "Oilseed", "Potatoes", 
+            "Berries", "Fruits and Vegetables", "Forage", "Other Ag", 
+            "Grassland", "Shrubland", "Wetland", "Forested", "Barren", 
+            "Urban", "Water"),
+  stringsAsFactors = FALSE)
+
+lc_classes
+```
+
+```{r, eval=FALSE}
+
+# Initialize an empty list to store results
+lsm_NA <- list()
+
+# Loop through each year and buffer, this will result in a very large list. Takes ~6 hours to run
+
+# This worked when only running with shdi and pland. I need to add the additional variables and run. Should take ~8 hours
+
+for (year in names(NA_comp_rasters)) {
+  for (i in seq_len(nrow(utrends_buff))) {
+    # Transform the buffer to match the raster's CRS
+    buffer_i <- st_transform(utrends_buff[i, ], crs = crs(NA_comp_rasters[[year]]))
+    
+    # Crop and mask the landcover raster for the current year
+    class_metrics <- crop(NA_comp_rasters[[year]], buffer_i) |> 
+      mask(buffer_i) |> 
+      # Calculate class-level metrics
+      calculate_lsm(level = "class", metric = c("pland", "lpi")) |> 
+      # Add variables to uniquely identify each point and year
+      mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
+    
+    landscape_metrics <- crop(NA_comp_rasters[[year]], buffer_i) |> 
+      mask(buffer_i) |> 
+      # Calculate landscape-level metrics
+      calculate_lsm(level = "landscape", metric = c("shdi", "ed")) |> 
+      # Add variables to uniquely identify each point and year
+      mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
+    
+    # Combine class-level and landscape-level metrics
+    lsm_NA[[paste(year, i, sep = "_")]] <- bind_rows(class_metrics, landscape_metrics) |> 
+      dplyr::select(year, srd_id, class, metric, value)
+  }
+}
+
+# Combine results into a single data frame
+lsm_NA_comp <- bind_rows(lsm_NA)
+
+#save as RDS
+#saveRDS(lsm_NA_comp, "Data/phjv_lsm_long.rds")
+
+
+```
+
+Transform data to wide format.
+```{r, eval=FALSE}
+
+# Updated code to transform to wide format
+NA_comp <- lsm_NA_comp |> 
+  # Fill missing combinations with zeros
+  complete(
+    year,                        # Include all years
+    srd_id,                      # Ensure all buffers are represented
+    class = unique(lc_classes$class), # Ensure all classes are included
+    metric = c("pland", "lpi"), # Include all metrics
+    fill = list(value = 0)       # Fill missing values with zeros
+  ) |> 
+  # Join with descriptive class labels
+  left_join(dplyr::select(lc_classes, class, label), by = "class") |> 
+  # Transform to wide format
+  pivot_wider(
+    values_from = value,                          # Metric values to populate wide-format table
+    names_from = c(class, label, metric),   # Columns formed by year, class, label, and metric
+    names_glue = "{metric}_c{str_pad(class, 2, pad = '0')}_{label}", # Format names
+    names_sort = TRUE,                            # Ensure logical sorting of columns
+    values_fill = 0                               # Fill missing combinations with zeros
+  ) |> 
+  arrange(srd_id)                           # Sort rows by year and buffer ID
+
+```
+
+Save output landscape metrics
+```{r, eval=FALSE}
+#save as RDS
+saveRDS(NA_comp, "Data/NA_comp.rds")
+
+#save a CSV 
+write.csv(NA_comp, "Data/NA_comp.csv", row.names = FALSE)
+
+```
+
+NA_comp = DF with final landscape metrics for rangewide analysis. At this point it does not have trend data added to the DF
+
+Load phjv Composition metrics
+```{r}
+NA_comp <- readRDS("Data/NA_comp.rds")
+```
+
+
+## Landscape Simplification Rasters
+Load North America rasters classified for landscape simplification metrics. These rasters are classified by 3 categories
+```{r}
+NA_simp_rasters <- list(
+  "2012" = rast("Rasters/NA_simp_2012.tif"),
+  "2013" = rast("Rasters/NA_simp_2013.tif"),
+  "2014" = rast("Rasters/NA_simp_2014.tif"),
+  "2015" = rast("Rasters/NA_simp_2015.tif"),
+  "2016" = rast("Rasters/NA_simp_2016.tif"),
+  "2017" = rast("Rasters/NA_simp_2017.tif"),
+  "2018" = rast("Rasters/NA_simp_2018.tif"),
+  "2019" = rast("Rasters/NA_simp_2019.tif"),
+  "2020" = rast("Rasters/NA_simp_2020.tif"),
+  "2021" = rast("Rasters/NA_simp_2021.tif"),
+  "2022" = rast("Rasters/NA_simp_2022.tif")
+)
+
+```
+
+label classifications
+```{r}
+simp_classes <- data.frame(
+  class = 0:2,
+  label = c("IR", "Semi_nat", "Ag"),
+  stringsAsFactors = FALSE)
+
+simp_classes
+```
+
+
+Run landscape metrics
+```{r, eval=FALSE}
+lsm_simp <- list()
+
+# Loop through each year in the raster list
+for (year in names(NA_simp_rasters)) {
+  for (i in seq_len(nrow(utrends_buff))) {
+    buffer_i <- st_transform(utrends_buff[i, ], crs = crs(NA_simp_rasters[[year]]))
+    
+    # Crop and mask the landcover raster for the current year
+    metrics <- crop(NA_simp_rasters[[year]], buffer_i) |> 
+      mask(buffer_i) |> 
+      # Calculate landscape metrics
+      calculate_lsm(level = "class", metric = c("pland")) |> 
+      # Add variables to uniquely identify each point and year
+      mutate(srd_id = buffer_i$srd_id, year = as.integer(year)) |> 
+      dplyr::select(year, srd_id, class, metric, value)
+    
+    # Store the result in the list
+    lsm_simp[[paste(year, i, sep = "_")]] <- metrics
+  }
+}
+
+# Combine results into a single data frame
+lsm_NA_simp <- bind_rows(lsm_simp)
+
+# View the combined results
+print(lsm_NA_simp)
+
+```
+
+
+```{r, eval=FALSE}
+
+# Updated code to transform to wide format
+NA_simp <- lsm_NA_simp |> 
+  # Fill missing combinations with zeros
+  complete(
+    year,                        # Include all years
+    srd_id,                      # Ensure all buffers are represented
+    class = unique(simp_classes$class), # Ensure all classes are included
+    metric = c("pland"), # Include all metrics
+    fill = list(value = 0)       # Fill missing values with zeros
+  ) |> 
+  # Join with descriptive class labels
+  left_join(dplyr::select(simp_classes, class, label), by = "class") |> 
+  # Transform to wide format
+  pivot_wider(
+    values_from = value,                          # Metric values to populate wide-format table
+    names_from = c(class, label, metric),   # Columns formed by year, class, label, and metric
+    names_glue = "{metric}_c{str_pad(class, 2, pad = '0')}_{label}", # Format names
+    names_sort = TRUE,                            # Ensure logical sorting of columns
+    values_fill = 0                               # Fill missing combinations with zeros
+  ) |> 
+  arrange(srd_id)                           # Sort rows by year and buffer ID
+
+```
+
+
+Save output Simplification landscape metrics
+```{r, eval=FALSE}
+#save as RDS
+saveRDS(NA_simp, "Data/NA_simp.rds")
+
+#save a CSV 
+write.csv(NA_comp, "Data/NA_simp.csv", row.names = FALSE)
+
+```
+
+
+Load North America Landscape Simplification metrics
+```{r}
+phjv_lsm_simp <- readRDS("Data/NA_simp.rds")
+```

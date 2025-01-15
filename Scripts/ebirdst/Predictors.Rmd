@@ -101,20 +101,31 @@ op <- options_landscapemetrics()
 Load Canada rasters classified for composition and configuration metrics. These rasters are classified by 17 simple land cover classifications.
 ```{r}
 can_rasters <- list(
-  "2012" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2012.tif"),
-  "2013" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2013.tif"),
-  "2014" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2014.tif"),
-  "2015" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2015.tif"),
-  "2016" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2016.tif"),
-  "2017" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2017.tif"),
-  "2018" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2018.tif"),
-  "2019" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2019.tif"),
-  "2020" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2020.tif"),
-  "2021" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2021.tif"),
-  "2022" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_predictor_code/Canada_comp/2022.tif")
+  "2012" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2012.tif"),
+  "2013" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2013.tif"),
+  "2014" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2014.tif"),
+  "2015" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2015.tif"),
+  "2016" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2016.tif"),
+  "2017" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2017.tif"),
+  "2018" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2018.tif"),
+  "2019" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2019.tif"),
+  "2020" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2020.tif"),
+  "2021" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2021.tif"),
+  "2022" = rast("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2022.tif")
 )
 
 ```
+
+```{r}
+checkl <- raster("C:/Users/Andres/OneDrive - University of Saskatchewan/04_landcover/04_Composition/Canada Composition/2012.tif")
+print(checkl)
+plot(checkl)
+
+check_landscape(checkl, verbose = TRUE)
+```
+
+
+
 
 
 Create table of all classifications and their respective labels
@@ -137,7 +148,7 @@ Four metrics at the landscape level: "SHDI" - Shannon diversity index, "ed" - Ed
 ```{r, eval=FALSE}
 
 # Initialize an empty list to store results
-lsm_comp <- list()
+lsm_pg <- list()
 
 # Loop through each year and buffer, this will result in a very large list. Takes ~6 hours to run
 for (year in names(can_rasters)) {
@@ -149,14 +160,14 @@ for (year in names(can_rasters)) {
     class_metrics <- crop(can_rasters[[year]], buffer_i) |> 
       mask(buffer_i) |> 
       # Calculate class-level metrics
-      calculate_lsm(level = "class", metric = c("pland","lpi")) |> 
+      calculate_lsm(level = "class", metric = c("pland")) |> 
       # Add variables to uniquely identify each point and year
       mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
     
     landscape_metrics <- crop(can_rasters[[year]], buffer_i) |> 
       mask(buffer_i) |> 
       # Calculate landscape-level metrics
-      calculate_lsm(level = "landscape", metric = c("shdi", "ed", "pd", "ai", "cohesion")) |> 
+      calculate_lsm(level = "landscape", metric = c("shdi")) |> 
       # Add variables to uniquely identify each point and year
       mutate(srd_id = buffer_i$srd_id, year = as.integer(year))
     
@@ -170,7 +181,7 @@ for (year in names(can_rasters)) {
 lsm_comp <- bind_rows(lsm_pg)
 
 #save as RDS
-saveRDS(lsm_comp, "Data/phjv_lsm_long.rds")
+#saveRDS(lsm_comp, "Data/phjv_lsm_long.rds")
 
 
 ```
@@ -275,10 +286,10 @@ for (year in names(can_simp_rasters)) {
 }
 
 # Combine results into a single data frame
-lsm_simp <- bind_rows(lsm_simp)
+lsm_NA_simp <- bind_rows(lsm_simp)
 
 # View the combined results
-print(lsm_simp)
+print(lsm_NA_simp)
 
 ```
 
@@ -286,7 +297,7 @@ print(lsm_simp)
 ```{r, eval=FALSE}
 
 # Updated code to transform to wide format
-phjv_lsm_simp <- lsm_simp |> 
+phjv_lsm_simp <- lsm_NA_simp |> 
   # Fill missing combinations with zeros
   complete(
     year,                        # Include all years
@@ -413,262 +424,16 @@ phjv_lsm_final <- phjv_long %>%
 
 ```
 
+Save output Simplification landscape metrics
+```{r, eval=FALSE}
+#save as RDS
+saveRDS(phjv_lsm_final, "Data/phjv_lsm_final.rds")
 
----
-
-
-# Predicor Correlations
-```{r}
-library(ggcorrplot)
-library(dplyr)
-library(ggplot2)
-library(reshape2)  
-
-
-
-# Select only the columns with "pland" 
-pland_cols <- phjv_lsm_final %>%
-  dplyr::select(contains("pland"))
-
-# Calculate Pearson's correlation matrix
-correlation_matrix <- cor(pland_cols, use = "pairwise.complete.obs", method = "pearson")
-
-# Reshape the correlation matrix for ggplot2
-correlation_melted <- melt(correlation_matrix)
-
-# Plot the correlation matrix
-ggplot(data = correlation_melted, aes(x = Var1, y = Var2, fill = value)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
-                       name = "Pearson\nCorrelation") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
-  coord_fixed() +
-  labs(title = "Correlation Matrix of Crop Proportions Metrics",
-       x = "Variables",
-       y = "Variables")
-```
-
-```{r}
-# List of predictors to include
-predictors <- c(
-   "lpi_c11_Grassland", "ai_cNA_NA", "cohesion_cNA_NA", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c02_Ag"
-)
-
-# Filter dataset
-filtered_data <- phjv_lsm_final %>%
-  dplyr::select(all_of(predictors))
-
-# Compute correlation matrix
-cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
-
-# Visualize the correlation matrix
-ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
-```
-
-# Outliers
-
-```{r}
-ggplot(phjv_lsm_final, aes(y = abd_trend)) +
-  geom_boxplot() +
-  labs(title = "Boxplot of abd_trend", y = "Trend in Abundance", x = "") +
-  theme_minimal()
-
-ggplot(phjv_lsm_final, aes(y = abd)) +
-  geom_boxplot() +
-  labs(title = "Boxplot of abundance", y = "Abundance", x = "") +
-  theme_minimal()
+#save a CSV 
+write.csv(phjv_lsm_final, "Data/phjv_lsm_final.csv", row.names = FALSE)
 
 ```
 
 
-
-# Normality test
-Trend
-```{r}
-shapiro.test(phjv_lsm_final$abd_trend)
-
-hist(phjv_lsm_final$abd_trend, main = "Histogram of trend", xlab = "abd_trend")
-
-qqnorm(phjv_lsm_final$abd_trend)
-qqline(phjv_lsm_final$abd_trend, col = "red")
-
-
-library(e1071)
-skewness(phjv_lsm_final$abd_trend)
-kurtosis(phjv_lsm_final$abd_trend)
-
-
-
-```
-
-
-abundance
-```{r}
-hist(phjv_lsm_final$abd, main = "Distribution of Abundance", xlab = "Abundance")
-
-shapiro.test(phjv_lsm_final$abd)
-
-
-qqnorm(phjv_lsm_final$abd)
-qqline(phjv_lsm_final$abd, col = "red")
-
-```
-
-
-
-
-
-# GLMM
-```{r}
-library(lme4)
-library(Matrix)
-
-names(phjv_lsm_final)
-```
-
-Abundance with year fixed effect
-```{r}
-library(lme4)
-model1 <- lmer(abd ~ shdi_cNA_NA + ai_cNA_NA + lpi_c11_Grassland + lpi_c09_Forage + pland_c02_Ag + year + (1 | srd_id) , data = phjv_lsm_final)
-
-qqnorm(residuals(model1))
-qqline(residuals(model1), col = "red")
-hist(residuals(model1))
-
-plot(fitted(model1), residuals(model1), 
-     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs Fitted")
-abline(h = 0, col = "red")
-
-```
-
-Trend with year interaction
-```{r}
-
-year_int_model <- lmer(abd ~ shdi_cNA_NA * year + ai_cNA_NA * year + lpi_c11_Grassland * year + lpi_c09_Forage * year + pland_c02_Ag * year + (1 | srd_id), data = phjv_lsm_final)
-
-qqnorm(residuals(year_int_model))
-qqline(residuals(year_int_model), col = "red")
-hist(residuals(year_int_model))
-
-plot(fitted(year_int_model), residuals(year_int_model), 
-     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs Fitted")
-abline(h = 0, col = "red")
-
-
-
-```
-
-basic lm
-```{r}
-# Model abundance as a function of SHDI and other predictors
-model <- lm(abd_trend ~ shdi_cNA_NA + ai_cNA_NA + lpi_c11_Grassland + lpi_c09_Forage + pland_c02_Ag, 
-              data = phjv_lsm_final)
-
-summary(model)
-```
-
-Basic lm with year interaction
-```{r}
-# Model abundance as a function of SHDI and other predictors
-fixedsrd_model <- lm(abd ~ shdi_cNA_NA * year + ai_cNA_NA * year + lpi_c11_Grassland * year + lpi_c09_Forage * year + pland_c02_Ag * year , 
-              data = phjv_lsm_final)
-
-summary(fixedsrd_model)
-```
-
-
-
-# GEOG 822 Exploratory Analysis
-Subset phjv lsm final to 2022 to visualize with parallel coordinate plot
-```{r}
-
-phjv_lsm_22 <- subset(phjv_lsm_final, year == "2022")
-
-```
-
-
-```{r}
-# Subset the data to include the required variables
-library(dplyr)
-df_subset <- phjv_lsm_22 %>% 
-  dplyr::select(abd, abd_trend, , lpi_c11_Grassland, shdi_cNA_NA, cohesion_cNA_NA, ai_cNA_NA, lpi_c09_Forage, pland_c09_Forage, pland_c01_Cereal )
-
-# Normalize the data (scale to 0-1 for PCP visualization)
-df_normalized <- as.data.frame(lapply(df_subset, function(x) (x - min(x)) / (max(x) - min(x))))
-
-```
-
-
-
-```{r}
-
-library(plotly)
-
-plot_ly(
-  type = 'parcoords',
-  line = list(
-    color = df_normalized$abd_trend,  # Color by trend for better visual distinction
-    colorscale = 'Viridis'
-  ),
-  dimensions = list(
-    list(label = "Abundance", values = df_normalized$abd),
-    list(label = "Trend", values = df_normalized$abd_trend),
-    list(label = "Cereal Proportion", values = df_normalized$pland_c01_Cereal)
-    
-  )
-) %>%
-  layout(
-    paper_bgcolor = 'rgba(0,0,0,0)',  # Transparent background
-    plot_bgcolor = 'rgba(0,0,0,0)'   # Transparent plot area
-  )
-
-
-```
-
-Box plot for groups of trends increasing vs decreasing
-
-```{r}
-phjv_lsm_dir <- phjv_lsm_22
-
-phjv_lsm_dir$dir <- NA
-
-phjv_lsm_dir$dir <- ifelse(phjv_lsm_dir$abd_trend >= 0, "Positive", "Negative")
-
-```
-
-
-box plot
-```{r}
-
-library(ggplot2)
-
-# Create the plot
-ggplot(phjv_lsm_dir, aes(x = dir, y = pland_c01_Cereal, fill = dir)) +
-  geom_boxplot(alpha = 0.7, outlier.shape = NA) +  # Boxplot with semi-transparent fill and no outliers
-  geom_jitter(width = 0.2, size = 1, alpha = 0.5, aes(color = dir)) +  # Jittered points for individual observations
-  labs(
-    title = "Boxplot of Cereal proportions by trend direction",
-    x = "Direction (Positive or Negative)",
-    y = "pland_c01_Cereal"
-  ) +
-  theme_minimal() +  # Minimal theme
-  theme(
-    panel.background = element_rect(fill = "transparent", color = NA),  # Transparent background
-    plot.background = element_rect(fill = "transparent", color = NA)
-  ) +
-  scale_fill_manual(values = c("Negative" = "#FF6666", "Positive" = "#66B3FF")) +  # Custom box colors
-  scale_color_manual(values = c("Negative" = "#FF6666", "Positive" = "#66B3FF"))  # Matching jitter colors
-
-
-```
-
-```{r}
-t_test_result <- t.test(pland_c01_Cereal ~ dir, data = phjv_lsm_dir)
-
-# View the result
-print(t_test_result)
-```
 
 

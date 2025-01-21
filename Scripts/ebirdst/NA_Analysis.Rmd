@@ -1,0 +1,251 @@
+---
+title: "North America Analysis"
+author: "Andres N. Rosales"
+date: "2025-01-08"
+output:
+  html_document:
+    toc: yes
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+
+# Library
+```{r, message=FALSE, warning=FALSE}
+
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+library(raster)
+library(terra)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(ebirdst)
+library(exactextractr)
+library(landscapemetrics)
+library(readr)
+library(stringr)
+library(tidyr)
+library(units)
+library(viridis)
+library(progress)
+library(dplyr)
+library(lme4)
+library(mgcv)
+
+
+```
+
+
+
+```{r, include=FALSE}
+all_lsm <- readRDS("Data/all_lsm.rds")
+```
+
+```{r, include=FALSE}
+names(all_lsm)
+```
+
+```{r, include=FALSE}
+upsabuff <- readRDS("Data/upsabuff.rds")
+```
+
+
+# Predictor Correlations
+Calculate Pearson's correlation coefficient for every variable to be used in subsequent models.
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(ggcorrplot)
+library(dplyr)
+library(ggplot2)
+library(reshape2)  
+```
+
+```{r}
+# List of predictors to include
+predictors <- c(
+   "lpi_c11_Grassland", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c02_Ag", "ed_cNA_NA"
+)
+
+# Filter dataset
+filtered_data <- all_lsm %>%
+  dplyr::select(all_of(predictors))
+
+# Compute correlation matrix
+cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
+
+# Visualize the correlation matrix
+ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
+```
+
+# Predictor relationships
+
+
+Distribution of trend response variable.
+
+```{r}
+ggplot(upsabuff, aes(x = abd_trend)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+```
+Almost follows a normal distribution, but without trends that are zero (stable) we observe biomodal. I could possibly look into adding a categorical variable indicating increase or decrease. I need to explore this more...
+
+
+## Shannon Diversity Index
+Calculate change in SHDI using regression. 
+```{r}
+
+shdi_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    slope = coef(lm(shdi_cNA_NA ~ year))[2],  
+    intercept = coef(lm(shdi_cNA_NA ~ year))[1] 
+  )
+
+shdi <- shdi_slopes %>%
+  left_join(upsabuff, by = c("srd_id"))
+```
+
+add mean and standard deviation of shdi for each location
+```{r}
+mean_shdi <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(mean_shdi = mean(shdi_cNA_NA, na.rm = TRUE))
+
+shdi <- shdi %>%
+  left_join(mean_shdi, by = "srd_id")
+sd_shdi <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(sd_shdi = sd(shdi_cNA_NA, na.rm = TRUE))
+
+shdi <- shdi %>%
+  left_join(sd_shdi, by = "srd_id")
+```
+
+
+```{r}
+ggplot(shdi, aes(x = slope, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between SHDI Slope and Abundance Trend",
+    x = "Slope of SHDI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+```
+
+Figure reveals mostly linear with some deviation along the edges. Test lm and gam model to determine best fit.
+```{r}
+shdilm_model <- lm(abd_trend ~ slope, data = shdi)
+plot(fitted(shdilm_model), residuals(shdilm_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+shdigam_model <- gam(abd_trend ~ s(slope), data = shdi)
+summary(shdilm_model)
+summary(shdigam_model)
+
+# Compare lm and gam
+AIC(shdilm_model, shdigam_model)
+```
+
+Slight improvement of fit with the GAM model. However, since it is small it might be ok to assume linear relationship.
+
+
+Mean Shannon Diversity Index
+```{r}
+ggplot(shdi, aes(x = mean_shdi, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between SHDI Slope and Abundance Trend",
+    x = "Slope of SHDI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+```
+
+Standard Deviation
+```{r}
+ggplot(shdi, aes(x = sd_shdi, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between SHDI Slope and Abundance Trend",
+    x = "Slope of SHDI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+meanshdi_gam <- gam(abd_trend ~ s(sd_shdi), data = shdi)
+summary(meanshdi_gam)
+
+```
+
+
+## Landscape Simplification
+calculate slope of landscape simplification over 11 years
+```{r}
+simp_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    slope = coef(lm(pland_c02_Ag ~ year))[2],  
+    intercept = coef(lm(pland_c02_Ag ~ year))[1] 
+  )
+
+simplification <- simp_slopes %>%
+  left_join(upsabuff, by = c("srd_id"))
+```
+
+
+plot simplification slope against trend
+```{r}
+ggplot(simplification, aes(x = slope, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between SHDI Slope and Abundance Trend",
+    x = "Slope of SHDI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+
+```{r}
+simplm_model <- lm(abd_trend ~ slope, data = shdi)
+plot(fitted(simplm_model), residuals(simplm_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+simpgam_model <- gam(abd_trend ~ s(slope), data = shdi)
+summary(simplm_model)
+summary(simpgam_model)
+
+# Compare lm and gam
+AIC(simplm_model, simpgam_model)
+```
+

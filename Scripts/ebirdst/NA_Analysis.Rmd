@@ -1,19 +1,57 @@
 ---
-title: "North America Analysis"
+title: "Rangewide Analysis"
 author: "Andres N. Rosales"
-date: "2025-01-08"
+date: "2025-01-24"
 output:
-  html_document:
-    toc: yes
   word_document:
     toc: yes
   pdf_document:
     toc: yes
+  html_document:
+    toc: yes
 ---
 
+# Candidate Models
+**Prediction 1**
 
-# Library
-```{r, message=FALSE, warning=FALSE}
+Breeding regions declining in trend will be correlated with low landscape heterogeneity and simplified agricultural landscapes.
+
+$Trend = Δ SHDI + Δ Edge Density + Δ Cropland + (1 | Location)$
+
+
+**Prediction 2**
+
+Greater landscape heterogeneity will lower the negative effects of landscape simplification on breeding trends.
+“Is the effect of landscape diversity on Upland Sandpiper population dynamics dependent on the degree of simplification?” 
+
+$Trend = Δ SHDI + Δ Cropland + Δ SHDI * Δ Cropland + (1 | Location)$
+
+**Prediction 3**
+
+Forage agriculture and grasslands are associated with positive trends and high abundance. 
+“How are trends in forage agriculture and grasslands associated with trends and abundance of Upland Sandpiper?”
+
+$Trend = Δ Forage Ag + Δ Grassland + (1 | Location)$
+
+“Does configuration of forage and grassland habitats influence their association with trends and abundance
+
+$Trend = Δ Forage Agriculture * Δ Forage Ag LPI + Δ Grassland *	 Δ Grassland LPI + (1 | Location)$
+
+**Prediction 4**
+
+Trends decline or become more variable with increasing distance from the core breeding range. Conversely, trends will be more stable near the core breeding region. 
+
+$Trend = Periphery + (1 | Location)$
+
+
+**Prediction 5**
+
+Geographical variation in abundance is driven by marginal habitat at the periphery.
+
+$Trend = Periphery + Δ SHDI +  Δ Cropland + (1 | Location) + (1| Year)$
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
 
 library(dplyr)
 library(purrr)
@@ -37,7 +75,7 @@ library(progress)
 library(dplyr)
 library(lme4)
 library(mgcv)
-
+library(GGally)
 
 ```
 
@@ -52,20 +90,54 @@ names(all_lsm)
 ```
 
 ```{r, include=FALSE}
+#Clean trend data for DF
 upsabuff <- readRDS("Data/upsabuff.rds")
 ```
 
-
-# Predictor Correlations
-Calculate Pearson's correlation coefficient for every variable to be used in subsequent models.
-```{r, message=FALSE, warning=FALSE, include=FALSE}
-library(ggcorrplot)
-library(dplyr)
-library(ggplot2)
-library(reshape2)  
+```{r, include=FALSE}
+#Edited trend df
+upsa_trd <- upsabuff
 ```
 
+
+
+
+# Response Distribution
+
+
+Distribution of trend response variable.
+
 ```{r}
+ggplot(upsabuff, aes(x = abd_trend)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+```
+Almost follows a normal distribution, but without trends that are zero (stable) we observe biomodal. I could possibly look into adding a categorical variable indicating increase or decrease. I need to explore this more...
+
+
+```{r}
+
+#add categorical variable to each location indicating increase or decrease
+upsa_trd$trend_dir <- ifelse(upsa_trd$abd_trend >0, "Increase", "Decrease")
+
+```
+
+
+```{r}
+#Distribution of abundance response variable. 
+ggplot(upsabuff, aes(x = abd)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+```
+Distribution of abundance estimates. 
+
+# Predictor relationships
+
+Correlation matric before aggregating predictors.
+```{r}
+library(ggcorrplot)
 # List of predictors to include
 predictors <- c(
    "lpi_c11_Grassland", "shdi_cNA_NA", "lpi_c09_Forage", "pland_c02_Ag", "ed_cNA_NA"
@@ -82,60 +154,72 @@ cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
 ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
 ```
 
-# Predictor relationships
-
-
-Distribution of trend response variable.
-
-```{r}
-ggplot(upsabuff, aes(x = abd_trend)) +
-  geom_histogram(bins = 30, fill = "blue", color = "black") +
-  theme_minimal()
-
-```
-Almost follows a normal distribution, but without trends that are zero (stable) we observe biomodal. I could possibly look into adding a categorical variable indicating increase or decrease. I need to explore this more...
+I still need to determine a pearsons correlation coefficient threshold to report. Some literature has used 0.7 and I will go with that for now. I still need to develop a better backing for this and if this is something I will continue to use going forward...
 
 
 ## Shannon Diversity Index
-Calculate change in SHDI using regression. 
+I want to use the slope of a linear regression for SHDI ~ year for every location as a proxy for change in SHDI. I will need to confirm SHDI changes in linearly.
+fit lm and gam and compare fit for slope of SHDI as explanatory predictor
 ```{r}
+shdi_lmm <- lmer(shdi_cNA_NA ~ year + (1|srd_id), data = all_lsm)
+summary(shdi_lmm)
 
+shdi_gamm <- gam(shdi_cNA_NA ~ s(year, k=10) + srd_id, method="REML", data = all_lsm)
+summary(shdi_gamm)
+AIC(shdi_lmm, shdi_gamm)
+```
+Big difference in AIC values when comparing GAM and lm model. the relationships of each location likely follow a linear relationship over years, allowing it to be representative of the change in diversity over time. 
+
+
+
+```{r, include=FALSE}
+#Edited trend df
+
+upsa_trd <- upsabuff
+```
+
+
+Calculate change in SHDI using linear regression. THis will be used as a predictor representing the change in diversity over the trend period
+```{r}
+#Slope and intercept
 shdi_slopes <- all_lsm %>%
   group_by(srd_id) %>%
   summarize(
-    slope = coef(lm(shdi_cNA_NA ~ year))[2],  
-    intercept = coef(lm(shdi_cNA_NA ~ year))[1] 
+    shdi_slope = coef(lm(shdi_cNA_NA ~ year))[2],  
+    shdi_intercept = coef(lm(shdi_cNA_NA ~ year))[1] 
   )
 
-shdi <- shdi_slopes %>%
-  left_join(upsabuff, by = c("srd_id"))
+upsa_trd <- shdi_slopes %>%
+  left_join(upsa_trd, by = c("srd_id"))
 ```
+
 
 add mean and standard deviation of shdi for each location
 ```{r}
+#Mean
 mean_shdi <- all_lsm %>%
   group_by(srd_id) %>%
   summarize(mean_shdi = mean(shdi_cNA_NA, na.rm = TRUE))
-
-shdi <- shdi %>%
-  left_join(mean_shdi, by = "srd_id")
+upsa_trd <- mean_shdi %>%
+  left_join(upsa_trd, by = "srd_id")
+#Standard Dev
 sd_shdi <- all_lsm %>%
   group_by(srd_id) %>%
   summarize(sd_shdi = sd(shdi_cNA_NA, na.rm = TRUE))
 
-shdi <- shdi %>%
-  left_join(sd_shdi, by = "srd_id")
+upsa_trd <- sd_shdi %>%
+  left_join(upsa_trd, by = "srd_id")
 ```
 
 
 ```{r}
-ggplot(shdi, aes(x = slope, y = abd_trend)) +
+ggplot(upsa_trd, aes(x = shdi_slope, y = abd_trend)) +
   geom_point(color = "blue", alpha = 0.3, size = 2) +  
-  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
   labs(
-    title = "Relationship Between SHDI Slope and Abundance Trend",
+    title = "Relationship Between SHDI Slope and Trend",
     x = "Slope of SHDI (Change over Time)",
-    y = "Abundance Trend (abd_trend)"
+    y = "Trend"
   ) +
   theme_minimal() +
   theme(
@@ -148,10 +232,10 @@ ggplot(shdi, aes(x = slope, y = abd_trend)) +
 
 Figure reveals mostly linear with some deviation along the edges. Test lm and gam model to determine best fit.
 ```{r}
-shdilm_model <- lm(abd_trend ~ slope, data = shdi)
+shdilm_model <- lm(abd_trend ~ shdi_slope, data = upsa_trd)
 plot(fitted(shdilm_model), residuals(shdilm_model), main = "Residuals vs Fitted")
 abline(h = 0, col = "red")
-shdigam_model <- gam(abd_trend ~ s(slope), data = shdi)
+shdigam_model <- gam(abd_trend ~ s(shdi_slope), data = upsa_trd)
 summary(shdilm_model)
 summary(shdigam_model)
 
@@ -162,46 +246,7 @@ AIC(shdilm_model, shdigam_model)
 Slight improvement of fit with the GAM model. However, since it is small it might be ok to assume linear relationship.
 
 
-Mean Shannon Diversity Index
-```{r}
-ggplot(shdi, aes(x = mean_shdi, y = abd_trend)) +
-  geom_point(color = "blue", alpha = 0.3, size = 2) +  
-  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
-  labs(
-    title = "Relationship Between SHDI Slope and Abundance Trend",
-    x = "Slope of SHDI (Change over Time)",
-    y = "Abundance Trend (abd_trend)"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 16),
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12)
-  )
 
-```
-
-Standard Deviation
-```{r}
-ggplot(shdi, aes(x = sd_shdi, y = abd_trend)) +
-  geom_point(color = "blue", alpha = 0.3, size = 2) +  
-  geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
-  labs(
-    title = "Relationship Between SHDI Slope and Abundance Trend",
-    x = "Slope of SHDI (Change over Time)",
-    y = "Abundance Trend (abd_trend)"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 16),
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12)
-  )
-
-meanshdi_gam <- gam(abd_trend ~ s(sd_shdi), data = shdi)
-summary(meanshdi_gam)
-
-```
 
 
 ## Landscape Simplification
@@ -210,24 +255,24 @@ calculate slope of landscape simplification over 11 years
 simp_slopes <- all_lsm %>%
   group_by(srd_id) %>%
   summarize(
-    slope = coef(lm(pland_c02_Ag ~ year))[2],  
-    intercept = coef(lm(pland_c02_Ag ~ year))[1] 
+    simp_slope = coef(lm(pland_c02_Ag ~ year))[2],  
+    simp_intercept = coef(lm(pland_c02_Ag ~ year))[1] 
   )
 
-simplification <- simp_slopes %>%
-  left_join(upsabuff, by = c("srd_id"))
+upsa_trd <- simp_slopes %>%
+  left_join(upsa_trd, by = c("srd_id"))
 ```
 
 
 plot simplification slope against trend
 ```{r}
-ggplot(simplification, aes(x = slope, y = abd_trend)) +
+ggplot(upsa_trd, aes(x = simp_slope, y = abd_trend)) +
   geom_point(color = "blue", alpha = 0.3, size = 2) +  
   geom_smooth(method = "gam", color = "red", se = TRUE, linetype = "dashed") + 
   labs(
-    title = "Relationship Between SHDI Slope and Abundance Trend",
+    title = "Relationship Between SHDI Slope and Trend",
     x = "Slope of SHDI (Change over Time)",
-    y = "Abundance Trend (abd_trend)"
+    y = "Trend"
   ) +
   theme_minimal() +
   theme(
@@ -238,14 +283,205 @@ ggplot(simplification, aes(x = slope, y = abd_trend)) +
 ```
 
 ```{r}
-simplm_model <- lm(abd_trend ~ slope, data = shdi)
+simplm_model <- lm(abd_trend ~ simp_slope, data = upsa_trd)
 plot(fitted(simplm_model), residuals(simplm_model), main = "Residuals vs Fitted")
 abline(h = 0, col = "red")
-simpgam_model <- gam(abd_trend ~ s(slope), data = shdi)
+simpgam_model <- gam(abd_trend ~ s(simp_slope), data = upsa_trd)
 summary(simplm_model)
 summary(simpgam_model)
 
 # Compare lm and gam
 AIC(simplm_model, simpgam_model)
 ```
+## LPI Grassland
+calculate the slope and average LPI for each location
+```{r}
+#Slope
+GLPI_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    GLPI_slope = coef(lm(lpi_c11_Grassland ~ year))[2],  
+    GLPI_intercept = coef(lm(lpi_c11_Grassland ~ year))[1] 
+  )
+upsa_trd <- GLPI_slopes %>%
+  left_join(upsa_trd, by = c("srd_id"))
 
+#Mean
+mean_GLPI <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(mean_GLPI = mean(lpi_c11_Grassland, na.rm = TRUE))
+upsa_trd <- mean_GLPI %>%
+  left_join(upsa_trd, by = "srd_id")
+```
+
+Plot trend ~ slope and trend ~ Mean
+```{r}
+ggplot(upsa_trd, aes(x = GLPI_slope, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Grassland LPI and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Trend"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+ggplot(upsa_trd, aes(x = mean_GLPI, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Grassland LPI and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Trend"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+
+## LPI Forage
+calculate the slope and average LPI for each location
+```{r}
+#Slope
+FLPI_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    FLPI_slope = coef(lm(lpi_c09_Forage ~ year))[2],  
+    FLPI_intercept = coef(lm(lpi_c09_Forage ~ year))[1] 
+  )
+upsa_trd <- FLPI_slopes %>%
+  left_join(upsa_trd, by = c("srd_id"))
+
+#Mean
+mean_FLPI <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(mean_FLPI = mean(lpi_c09_Forage, na.rm = TRUE))
+upsa_trd <- mean_FLPI %>%
+  left_join(upsa_trd, by = "srd_id")
+```
+
+Plot trend ~ slope and trend ~ Mean
+```{r}
+ggplot(upsa_trd, aes(x = FLPI_slope, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Forage LPI and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Trend"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+ggplot(upsa_trd, aes(x = mean_FLPI, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Forage LPI and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Trend"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+
+## Edge Density
+calcaulte the slope and average LPI for each location
+```{r}
+#Slope
+ED_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    ED_slope = coef(lm(ed_cNA_NA ~ year))[2],  
+    ED_intercept = coef(lm(ed_cNA_NA ~ year))[1] 
+  )
+upsa_trd <- ED_slopes %>%
+  left_join(upsa_trd, by = c("srd_id"))
+
+#Mean
+mean_ED <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(mean_ED = mean(ed_cNA_NA, na.rm = TRUE))
+upsa_trd <- mean_ED %>%
+  left_join(upsa_trd, by = "srd_id")
+```
+
+Plot trend ~ slope and trend ~ Mean
+```{r}
+ggplot(upsa_trd, aes(x = ED_slope, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Edge Density and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+ggplot(upsa_trd, aes(x = mean_ED, y = abd_trend)) +
+  geom_point(color = "blue", alpha = 0.3, size = 2) +  
+  geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between Edge Density and Trend",
+    x = "Slope of Grassland LPI (Change over Time)",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+### Correlation matrix
+matrix of relationships / distribution of response and explanatory variables after aggregating
+```{r, message=FALSE}
+upsa_trd$trend_dir <- ifelse(upsa_trd$abd_trend >0, "Increase", "Decrease")
+
+
+agg_mean_predictors <- upsa_trd[,c("mean_ED","mean_FLPI","mean_GLPI",  "mean_shdi",  "abd_trend", "trend_dir")]
+
+agg_slope_predictors <- upsa_trd[,c("ED_slope","FLPI_slope", "GLPI_slope", "simp_slope",  "shdi_slope", "abd_trend", "trend_dir")]
+
+#aggregated_predictors <- upsa_trd[,c("mean_ED","ED_slope","mean_FLPI","FLPI_slope","mean_GLPI", "GLPI_slope", "simp_slope", "mean_shdi", "shdi_slope", "abd_trend", "trend_dir")]
+
+#Average 
+ggpairs(agg_mean_predictors, ggplot2::aes(colour = trend_dir), lower = list(continuous = wrap("smooth", colour = "blue")))
+
+#Slope
+ggpairs(agg_slope_predictors, ggplot2::aes(colour = trend_dir), lower = list(continuous = wrap("smooth", colour = "blue")))
+
+```
+```{r}
+names(upsa_trd)
+```
+
+
+# Model Runs
+Current work in progress...
+
+I have the data frame and predictors set up to be able to run models. 
+
+I need to determine which predictors I will use in candidate models (mean vs slope). 
+Also, I need to determine a strategy for how I will model.(How can I include abundance, spatial dependencies?, error structure?)

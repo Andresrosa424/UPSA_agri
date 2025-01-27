@@ -58,7 +58,7 @@ This code views and extracts available status and trend data for Upland Sandpipe
 
 Set unique key to access eBirdst data (expires Jan 18th 2025)
 ```{r}
-set_ebirdst_access_key("3t1ddtda3uh3", overwrite = TRUE)
+set_ebirdst_access_key("suvkk96q5mrj", overwrite = TRUE)
 
 ```
 
@@ -134,6 +134,18 @@ write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_
          layer = "ubuff")
 
 ```
+upsa trends for range wide (excluding YT and AK) that are only >80% confidence
+```{r}
+rangewide80 <- subset(utrends_buff, abd_ppy_nonzero == "TRUE")
+
+ggplot() +
+  geom_sf(data = rangewide80, fill = "lightblue", color = "darkblue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+```
+
+
 
 ## Spatial Buffer for PHJV
 ```{r}

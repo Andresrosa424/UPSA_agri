@@ -65,18 +65,10 @@ set_ebirdst_access_key("suvkk96q5mrj", overwrite = TRUE)
 Show all species with status and trend data available. We will subset to show Upland Sandpiper data availability. 
 ```{r}
 
-trend_runs <- ebirdst_runs %>%
-  filter(has_trends) %>%
-  dplyr::select(
-    species_code, common_name, trends_season, trends_region,
-    trends_start_year, trends_end_year, trends_start_date,
-    trends_end_date, rsquared, beta0
-  )
+trend_runs <- ebirdst_runs 
 
 u_runs <- trend_runs %>%
-  filter(common_name == "Upland Sandpiper") %>%
-  dplyr::select(trends_start_year, trends_end_year, 
-                trends_start_date, trends_end_date)
+  filter(common_name == "Upland Sandpiper") 
 ```
 
 
@@ -89,7 +81,7 @@ ebirdst_download_trends("Upland Sandpiper")
 
 utrends_st <- load_trends("Upland Sandpiper")
 
-
+utrends_folds <- load_trends("Upland Sandpiper", fold_estimates = TRUE)
 # Write a csv of each trend pixel 
 write.csv(utrends_st, file = "Data/utrends20122022.csv", row.names = FALSE) 
 ```

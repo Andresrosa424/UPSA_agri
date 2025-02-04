@@ -73,7 +73,6 @@ u_runs <- trend_runs %>%
 
 
 
-
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
@@ -81,10 +80,49 @@ ebirdst_download_trends("Upland Sandpiper")
 
 utrends_st <- load_trends("Upland Sandpiper")
 
-utrends_folds <- load_trends("Upland Sandpiper", fold_estimates = TRUE)
 # Write a csv of each trend pixel 
 write.csv(utrends_st, file = "Data/utrends20122022.csv", row.names = FALSE) 
 ```
+
+Create object with upsa fold estimates and calculate the width of the CI and Standard Dev.
+```{r}
+utrends_folds <- load_trends("Upland Sandpiper", fold_estimates = TRUE)
+
+utrends_folds <- utrends_folds %>%
+  mutate(abd_ppy = round(abd_ppy, 7)) %>%
+  mutate(abd_trend = 100 * ((1 + abd_ppy / 100)^(2022 - 2012) - 1)) %>%
+  group_by(srd_id) %>% 
+  mutate(trend_stdev = sd(abd_trend))
+
+trend_sd <- utrends_folds %>%
+  dplyr::select(srd_id, trend_stdev) %>%
+  distinct()
+
+utrends_st <- utrends_st %>%
+  mutate(CI_width = abd_trend_upper - abd_trend_lower) %>%
+  left_join(trend_sd, by = "srd_id") %>%
+  rename(CI_stdev = trend_stdev)
+```
+
+histogram of CI widths
+```{r}
+ggplot(utrends_st, aes(x = CI_width)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+```
+
+
+```{r}
+utrends_st <- utrends_st %>% 
+  filter(!(srd_id >= 126707 & srd_id <= 171704)) %>% 
+  filter(CI_width <= 35)
+
+ggplot(utrends_st, aes(x = abd_trend)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+```
+
 
 
 ## Vector of Spatial Trends and Abundance
@@ -104,7 +142,7 @@ write_sf(utrends_sf,"Trends_sf/utrends_sf2022.gpkg", layer = "uppies_trends")
 Removed Alaska / Yukon points from utrends_st
 ```{r}
 
-utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
+#utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
 
 ```
 
@@ -124,16 +162,6 @@ ggplot() +
 
 write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrends_buff.gpkg",
          layer = "ubuff")
-
-```
-upsa trends for range wide (excluding YT and AK) that are only >80% confidence
-```{r}
-rangewide80 <- subset(utrends_buff, abd_ppy_nonzero == "TRUE")
-
-ggplot() +
-  geom_sf(data = rangewide80, fill = "lightblue", color = "darkblue", alpha = 0.5) +
-  theme_minimal() +
-  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
 
 ```
 
@@ -169,7 +197,6 @@ rasterize cumulative trend estimate using `terra` package
 ```{r, include=FALSE}
 utrends_ras <- rasterize_trends(utrends_st, 
                                   layers = c("abd_trend"))
-
 
 ```
 

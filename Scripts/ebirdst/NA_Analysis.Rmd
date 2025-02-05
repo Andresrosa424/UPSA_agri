@@ -604,6 +604,10 @@ gam.check(globalmodel)
 ```
 
 
+glm global model
+```{r}
+glm_global <- glm(abd_trend ~ mean_shdi + mean_FLPI + mean_GLPI + simp_slope, family = "gaussian", data = upsa_trd)
+```
 
 
 

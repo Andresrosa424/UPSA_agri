@@ -61,13 +61,6 @@ NA_comp_rasters <- list(
 ```
 
 
-```{r}
-check <- rast("Rasters/NA_comp_2012.tif")
-
-check_landscape(check)
-```
-
-
 Create table of all classifications and their respective labels
 ```{r}
 lc_classes <- data.frame(
@@ -79,6 +72,11 @@ lc_classes <- data.frame(
   stringsAsFactors = FALSE)
 
 lc_classes
+```
+
+
+```{r}
+utrends_buff<- st_read("Trends_sf/utrends_buff.gpkg", layer = "ubuff")
 ```
 
 ```{r, include = FALSE}
@@ -150,7 +148,7 @@ NA_comp <- lsm_NA_comp |>
   ) |> 
   arrange(srd_id)                           # Sort rows by year and buffer ID
 
-NA_comp <- NA_comp[, -c(3,4,11,12,15:17, 40,41)]
+NA_comp <- NA_comp[, -c(3,4, 40,41)]
 ```
 
 Save output landscape metrics
@@ -162,14 +160,6 @@ saveRDS(NA_comp, "Data/NA_comp.rds")
 write.csv(NA_comp, "Data/NA_comp.csv", row.names = FALSE)
 
 ```
-
-NA_comp = DF with final landscape metrics for rangewide analysis. At this point it does not have trend data added to the DF
-
-Load phjv Composition metrics
-```{r}
-NA_comp <- readRDS("Data/NA_comp.rds")
-```
-
 
 ## Landscape Simplification Rasters
 Load North America rasters classified for landscape simplification metrics. These rasters are classified by 3 categories
@@ -272,132 +262,169 @@ write.csv(NA_comp, "Data/NA_simp.csv", row.names = FALSE)
 ```
 
 
-Load North America Landscape Simplification metrics
-```{r}
-NA_simp <- readRDS("Data/NA_simp.rds")
-```
-
 
 ## Combine data sets
 
-### eBird Data
 
-
-Create an object of Upland Sandpiper trends (2012-2022). 
+Load North America Landscape Simplification and composition metrics
 ```{r}
-
-utrends_st <- load_trends("Upland Sandpiper")
+NA_simp <- readRDS("Data/NA_simp.rds")
+NA_comp <- readRDS("Data/NA_comp.rds")
 
 ```
-
-#Spatial Buffer for predictor grid
-Removed Alaska / Yukon points from utrends_st
-```{r}
-
-utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
-
-```
-
-
-Subset estimates with >80% confidence
-```{r}
-utrends_st <- subset(utrends_st, abd_ppy_nonzero == "TRUE")
-
-```
-
-
-Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
-```{r}
-#set to 4326 then trnasfomr later during lsm
-utrends_buff <- utrends_st |> 
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
-  st_buffer(dist = set_units(13.5, "km"))                                        # Create 13.5 km buffers
-
-ggplot() +
-  geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) +
-  theme_minimal() +
-  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
-
-
-write_sf(utrends_buff,"Predictor_buffer/utrends_buff.gpkg",
-         layer = "ubuff")
-
-```
-
-
-```{r}
-#Load PHJV buffers we made in the ebirdst.rmd file
-utrends_buff <- st_read("Predictor_buffer/utrends_buff.gpkg", layer = "ubuff") #shapefile should be in WGS43
-
-
-# Temporarily drop geometry for the join
-upsabuff <- st_drop_geometry(utrends_buff)  
-
-#remove unnecessary columns
-upsabuff <- upsabuff[, -c(1:6)]
-
-saveRDS(upsabuff, "Data/upsabuff.rds")
-```
-
-
-## Dont run, since im not using abundance I dont have to format by year. I will format change in predictor, leaving me with one estimate of each variable for each srd_id
-Pivot upsabuff to long format for easier rbind
-```{r}
-ubuff_long <- upsabuff %>%
-  pivot_longer(
-    cols = dplyr::starts_with("20"), # Select columns that start with 'abd_20'
-    names_to = "year",            # Name of the new column for years
-    values_to = "abd"             # Name of the new column for the annual abundance values
-  ) %>%
-  arrange(srd_id, year)
-```
-
 
 Combine simplification and composition df to make a single df of all landscape metrics
 ```{r}
-all_lsm <- NA_comp %>%    #phjv_lsm_comp has all estimates, since it wasnt subset by abd_ppy_no
+raw_all_lsm <- NA_comp %>%   
   left_join(NA_simp, by = c("srd_id", "year"))
 ```
 
 
-R bind phjv_buff to phjv_lsm to have a final data set to model
 ```{r}
-ubuff_long <- ubuff_long %>%
-  mutate(
-    year = as.integer(year),
-    srd_id = as.integer(srd_id)
+#save as RDS
+saveRDS(raw_all_lsm, "Data/raw_all_lsm.rds")
+
+#save a CSV 
+write.csv(raw_all_lsm, "Data/raw_all_lsm.csv", row.names = FALSE)
+```
+
+
+
+
+```{r, include=FALSE}
+utrends <- readRDS("Data/utrends.rds")
+utrends <- utrends[, -c(1:6, 14)]
+all_lsm <- readRDS("Data/raw_all_lsm.rds")
+```
+
+
+### SHDI
+```{r}
+#Slope, Intercept, Mean
+shdi_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    shdi_slope = coef(lm(shdi_cNA_NA ~ year))[2],  
+    shdi_intercept = coef(lm(shdi_cNA_NA ~ year))[1], 
+    shdi_mean = mean(shdi_cNA_NA, na.rm = TRUE)
   )
 
-all_lsm <- all_lsm %>%
-  mutate(
-    year = as.integer(year),
-    srd_id = as.integer(srd_id)
+utrends <- shdi_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+```
+
+
+
+### Landscape Simplification
+```{r}
+#simplification slope, intercept, and mean
+simp_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    simp_slope = coef(lm(pland_c02_Ag ~ year))[2],  
+    simp_intercept = coef(lm(pland_c02_Ag ~ year))[1],
+    simp_mean = mean(pland_c02_Ag, na.rm = TRUE)
   )
 
-#Final lsm df with all locations and all ebird data
-NA_all_lsm <- ubuff_long %>%
-  left_join(all_lsm, by = c("srd_id", "year"))
+utrends <- simp_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+```
+
+
+### Grassland LPI
+```{r}
+#Grassland LPI slope, intercept, and mean
+GLPI_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    GLPI_slope = coef(lm(lpi_c11_Grassland ~ year))[2],  
+    GLPI_intercept = coef(lm(lpi_c11_Grassland ~ year))[1],
+    GLPI_mean = mean(lpi_c11_Grassland, na.rm = TRUE)
+  )
+utrends <- GLPI_slopes %>%
+  left_join(utrends, by = c("srd_id"))
 
 ```
+
+
+### Forage LPI
+```{r}
+#Forage LPI slope, intercept, and mean
+FLPI_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    FLPI_slope = coef(lm(lpi_c09_Forage ~ year))[2],  
+    FLPI_intercept = coef(lm(lpi_c09_Forage ~ year))[1],
+    FLPI_mean = mean(lpi_c09_Forage, na.rm = TRUE)
+  )
+utrends <- FLPI_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+
+```
+
+
+### Edge Density
+```{r}
+#Edge Density slope intercept and mean
+ED_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    ED_slope = coef(lm(ed_cNA_NA ~ year))[2],  
+    ED_intercept = coef(lm(ed_cNA_NA ~ year))[1],
+    ED_mean = mean(ed_cNA_NA, na.rm = TRUE)
+  )
+utrends <- ED_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+
+```
+
+
+
+### Grassland Composition
+```{r}
+#Grassland composition slope intercept and mean
+GR_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    GR_slope = coef(lm(pland_c11_Grassland ~ year))[2],  
+    GR_intercept = coef(lm(pland_c11_Grassland ~ year))[1],
+    GR_mean = mean(pland_c11_Grassland, na.rm = TRUE)
+  )
+utrends <- GR_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+
+```
+
+
+### Forage Composition
+```{r}
+#Slope
+FO_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    FO_slope = coef(lm(pland_c09_Forage ~ year))[2],  
+    FO_intercept = coef(lm(pland_c09_Forage ~ year))[1],
+    FO_mean = mean(pland_c09_Forage, na.rm = TRUE)
+  )
+utrends <- FO_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+
+```
+
+
+## Save
+```{r}
+NA_model <- utrends
+```
+
 
 Save output Simplification landscape metrics
 ```{r, eval=FALSE}
 #save as RDS
-saveRDS(NA_all_lsm, "Data/NA_all_lsm.rds")
+saveRDS(NA_model, "Data/NA_model.rds")
 
 #save a CSV 
-write.csv(NA_all_lsm, "Data/NA_all_lsm.csv", row.names = FALSE)
+write.csv(NA_model, "Data/NA_model.csv", row.names = FALSE)
 
 ```
-
-
-```{r}
-#save as RDS
-saveRDS(all_lsm, "Data/all_lsm.rds")
-
-#save a CSV 
-write.csv(all_lsm, "Data/all_lsm.csv", row.names = FALSE)
-```
-
-
 

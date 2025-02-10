@@ -47,7 +47,8 @@ library(stringr)
 library(tidyr)
 library(units)
 library(viridis)
-
+library(spdep)
+library(tmap)
 
 ```
 
@@ -76,12 +77,12 @@ u_runs <- trend_runs %>%
 Create an object of Upland Sandpiper trends (2012-2022). 
 *waiting for new eBird data release in November
 ```{r}
-ebirdst_download_trends("Upland Sandpiper")
+#ebirdst_download_trends("Upland Sandpiper")
 
-utrends_st <- load_trends("Upland Sandpiper")
+raw_utrends <- load_trends("Upland Sandpiper")
 
 # Write a csv of each trend pixel 
-write.csv(utrends_st, file = "Data/utrends20122022.csv", row.names = FALSE) 
+write.csv(raw_utrends, file = "Data/raw_utrends.csv", row.names = FALSE) 
 ```
 
 Create object with upsa fold estimates and calculate the width of the CI and Standard Dev.
@@ -98,59 +99,39 @@ trend_sd <- utrends_folds %>%
   dplyr::select(srd_id, trend_stdev) %>%
   distinct()
 
-utrends_st <- utrends_st %>%
+utrends <- raw_utrends %>%
   mutate(CI_width = abd_trend_upper - abd_trend_lower) %>%
   left_join(trend_sd, by = "srd_id") %>%
   rename(CI_stdev = trend_stdev)
 ```
 
-histogram of CI widths
-```{r}
-ggplot(utrends_st, aes(x = CI_width)) +
-  geom_histogram(bins = 30, fill = "blue", color = "black") +
-  theme_minimal()
-```
 
-
+filter to remove AK and YT trends, CI width, and st dev. Plot distribution of remaining trends after filtering. 
 ```{r}
-utrends_st <- utrends_st %>% 
+utrends <- utrends %>% 
   filter(!(srd_id >= 126707 & srd_id <= 171704)) %>% 
-  filter(CI_width <= 35)
+  filter(CI_width <= 50) %>%
+  filter(CI_stdev <= 20)
 
-ggplot(utrends_st, aes(x = abd_trend)) +
+ggplot(utrends, aes(x = abd_trend)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
   theme_minimal()
 
+#saveRDS(utrends, "Data/utrends.rds")
 ```
 
 
 
-## Vector of Spatial Trends and Abundance
-load vector of the pixel points 
-
-```{r}
-utrends_sf <- st_as_sf(utrends_st, 
-                       coords = c("longitude", "latitude"), 
-                       crs = st_crs(4326))                   #set WGS84 as crs
-
-#Save as a GeoPackage to working directory
-write_sf(utrends_sf,"Trends_sf/utrends_sf2022.gpkg", layer = "uppies_trends")
-```
 
 
-#Spatial Buffer for predictor grid
-Removed Alaska / Yukon points from utrends_st
-```{r}
-
-#utrends_st <- utrends_st %>% filter(!(srd_id >= 126707 & srd_id <= 171704))
-
-```
+# Spatial Buffer for predictor grid
+Using utrends_st, make the spatial format that will be used in landscape metric code
 
 
 Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
 ```{r}
-#set to 4326 then trnasfomr later during lsm
-utrends_buff <- utrends_st |> 
+#set to 4326 then transform later during lsm
+utrends_buff <- utrends |> 
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
   st_buffer(dist = set_units(13.5, "km"))                                        # Create 13.5 km buffers
 
@@ -160,8 +141,50 @@ ggplot() +
   labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
 
 
-write_sf(utrends_buff,"C:/Users/Andres/OneDrive - University of Saskatchewan/03_Arcpro/Chapter1/Shapefiles/ebirdst/Buffer/utrends_buff.gpkg",
-         layer = "ubuff")
+#write_sf(utrends_buff,"Trends_sf/utrends_buff.gpkg",layer = "ubuff")
+
+```
+
+# Periphery 
+```{r}
+utrends_buff_5070 <- st_transform(utrends_buff, crs = 5070)
+
+ensemble_union <- st_union(utrends_buff_5070)
+
+# Compute the centroid of the merged geometry
+ensemble_centroid <- st_centroid(ensemble_union)
+
+# Print the centroid
+print(ensemble_centroid)
+
+ggplot() + 
+  geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) 
+
+
+```
+
+```{r}
+library(sf)
+library(spdep)
+
+# Assuming utrends_buff_5070 is your sf object in EPSG:5070
+# Create queen contiguity neighbors with a snap tolerance (e.g., 500 m)
+nb_queen <- poly2nb(utrends_buff_5070, queen = TRUE, snap = 500)
+
+# Optionally, identify isolated polygons (islands)
+isolated <- which(card(nb_queen) == 0)
+if(length(isolated) > 0) {
+  cat("Isolated polygons (potential islands):", isolated, "\n")
+}
+
+# Convert the neighbor list to a spatial weights list using zero.policy = TRUE
+listw_queen <- nb2listw(nb_queen, zero.policy = TRUE)
+
+# Calculate local Moran's I for your variable (e.g., 'value')
+local_moran <- localmoran(utrends_buff_5070$abd, listw_queen, zero.policy = TRUE)
+
+# Inspect the results
+head(local_moran)
 
 ```
 

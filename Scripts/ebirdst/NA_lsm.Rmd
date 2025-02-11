@@ -36,6 +36,7 @@ library(units)
 library(viridis)
 library(progress)
 library(dplyr)
+library(RANN)
 
 ```
 
@@ -331,6 +332,20 @@ utrends <- simp_slopes %>%
 ```
 
 
+```{r}
+#seminat slope, intercept, and mean
+snat_slopes <- all_lsm %>%
+  group_by(srd_id) %>%
+  summarize(
+    snat_slope = coef(lm(pland_c01_Semi_nat ~ year))[2],  
+    snat_intercept = coef(lm(pland_c01_Semi_nat ~ year))[1],
+    snat_mean = mean(pland_c01_Semi_nat, na.rm = TRUE)
+  )
+
+utrends <- snat_slopes %>%
+  left_join(utrends, by = c("srd_id"))
+```
+
 ### Grassland LPI
 ```{r}
 #Grassland LPI slope, intercept, and mean
@@ -411,6 +426,30 @@ utrends <- FO_slopes %>%
 
 ```
 
+# Periphery 
+Load LISA results from GeoDA
+```{r}
+LISA <- read.csv("C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/vector_pixels/Moran/LISA_results.csv")
+LISA <- LISA[,-c(1:6, 8:19)]
+
+LISA$Core <- ifelse(LISA$LISA_CL == 1, 1, 0)
+
+#r bind
+utrends <- LISA %>%
+  dplyr::select(srd_id, Core) %>%
+  left_join(utrends, by = c("srd_id"))
+```
+
+
+Subset the points that are core and calculate nearest neighbor
+```{r}
+core_locations <- utrends[utrends$Core == 1, c("latitude", "longitude")]
+
+nn_result <- nn2(data = core_locations, query = utrends[, c("latitude", "longitude")], k = 1)
+
+utrends$Core_distance <- as.numeric(nn_result$nn.dists)
+```
+
 
 ## Save
 ```{r}
@@ -418,7 +457,6 @@ NA_model <- utrends
 ```
 
 
-Save output Simplification landscape metrics
 ```{r, eval=FALSE}
 #save as RDS
 saveRDS(NA_model, "Data/NA_model.rds")

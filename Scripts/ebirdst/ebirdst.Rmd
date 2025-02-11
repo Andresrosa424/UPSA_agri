@@ -103,6 +103,14 @@ utrends <- raw_utrends %>%
   mutate(CI_width = abd_trend_upper - abd_trend_lower) %>%
   left_join(trend_sd, by = "srd_id") %>%
   rename(CI_stdev = trend_stdev)
+
+ggplot(utrends, aes(x = CI_width)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+ggplot(utrends, aes(x = CI_stdev)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
 ```
 
 
@@ -145,23 +153,8 @@ ggplot() +
 
 ```
 
-# Periphery 
-```{r}
-utrends_buff_5070 <- st_transform(utrends_buff, crs = 5070)
-
-ensemble_union <- st_union(utrends_buff_5070)
-
-# Compute the centroid of the merged geometry
-ensemble_centroid <- st_centroid(ensemble_union)
-
-# Print the centroid
-print(ensemble_centroid)
-
-ggplot() + 
-  geom_sf(data = utrends_buff, fill = "lightblue", color = "darkblue", alpha = 0.5) 
 
 
-```
 
 ```{r}
 library(sf)

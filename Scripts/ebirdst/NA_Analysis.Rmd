@@ -55,29 +55,19 @@ $Trend = Periphery + Δ SHDI +  Δ Cropland + (1 | Location) + (1| Year)$
 
 library(dplyr)
 library(purrr)
-library(ggplot2)
-library(rnaturalearth)
 library(sf)
-library(raster)
-library(terra)
+library(ggplot2)
 library(tinytex)
 library(rmarkdown)
 library(knitr)
-library(ebirdst)
-library(exactextractr)
-library(landscapemetrics)
-library(readr)
-library(stringr)
 library(tidyr)
 library(units)
-library(viridis)
-library(progress)
 library(dplyr)
 library(lme4)
 library(mgcv)
 library(GGally)
 library(car)
-
+library(gratia)
 ```
 
 
@@ -95,7 +85,7 @@ names(NA_model)
 
 
 Distribution of trend response variable.
-```{r}
+```{r, echo = FALSE }
 ggplot(NA_model, aes(x = abd_trend)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
   theme_minimal()
@@ -105,7 +95,7 @@ ggplot(NA_model, aes(x = abd_trend)) +
 
 
 
-```{r}
+```{r, echo=FALSE}
 #Distribution of abundance response variable. 
 ggplot(NA_model, aes(x = abd)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
@@ -113,16 +103,35 @@ ggplot(NA_model, aes(x = abd)) +
 
 ```
 
+
+## Periphery
+
+
+Mapping of trend estimates with red points identified as "core"breeding areas as defined by Morans I.
+```{r, echo=FALSE}
+core_map <- NA_model |> 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
+  st_buffer(dist = set_units(13.5, "km")) 
+
+ggplot() +
+  geom_sf(data = core_map, aes(fill = factor(Core)), color = "black", size = 0.1, alpha = 1) +
+  scale_fill_manual(values = c("0" = "white", "1" = "red")) +
+  theme_minimal() +
+  labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
+
+```
+
+
 Distribution of abundance estimates. 
 
 # Predictor relationships
 
 Correlation matrix before aggregating predictors.
-```{r}
+```{r, echo=FALSE}
 library(ggcorrplot)
 # List of predictors to include
 predictors <- c(
-    "shdi_mean" , "simp_mean" , "FLPI_mean" , "GLPI_mean" , "ED_mean" , "FO_mean" , "GR_mean" 
+    "shdi_mean" , "simp_mean" , "FLPI_mean" , "GLPI_mean" , "ED_mean" , "FO_mean" , "GR_mean" , "abd", "Core_distance", "snat_mean" 
 )
 
 filtered_data <- NA_model %>%
@@ -135,21 +144,21 @@ ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blu
 
 I still need to determine a pearsons correlation coefficient threshold to report. Some literature has used 0.7 and I will go with that for now. I still need to develop a better backing for this and if this is something I will continue to use going forward...
 
-```{r, message=FALSE}
+```{r,  echo=FALSE ,message=FALSE, fig.width=10, fig.height=7}
 
-# Create the ggpairs plot
+# Create ggpairs plot
 ggpairs(
   filtered_data,
   lower = list(continuous = wrap("smooth", colour = "blue", size = 1)),
-  diag = list(continuous = "densityDiag"), # Add density plots to diagonals
-  upper = list(continuous = "cor") # Add correlation values in the upper triangle
+  diag = list(continuous = "densityDiag"), 
+  upper = list(continuous = "cor") 
 )
 ```
 
 ## Shannon Diversity Index
 
 
-```{r}
+```{r, echo=FALSE}
 ggplot(NA_model, aes(x = shdi_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
@@ -171,13 +180,13 @@ ggplot(NA_model, aes(x = shdi_mean, y = abd_trend)) +
 ## Landscape Simplification
 
 plot simplification slope against trend
-```{r}
+```{r, echo=FALSE}
 ggplot(NA_model, aes(x = simp_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
   labs(
     title = "Relationship Between Simplification Slope and Trend",
-    x = "Slope of Simplification (Change over Time)",
+    x = "Mean Simplification",
     y = "Trend"
   ) +
   theme_minimal() +
@@ -189,10 +198,31 @@ ggplot(NA_model, aes(x = simp_mean, y = abd_trend)) +
 ```
 
 
+```{r}
+SI_cube <- glm(abd_trend ~ simp_mean + I(simp_mean^2) + I(simp_mean^3), data = NA_model)
+summary(SI_cube)
+
+SI_lin <- glm(abd_trend ~ simp_mean, data = NA_model)
+summary(SI_lin)
+
+AIC(SI_cube, SI_lin)
+```
+
+
+Plotting of linear and quad model for mean landscape simplification. 
+```{r, echo=FALSE}
+SI_seq<-seq(0,90,25)
+SIQ <- predict(SI_cube,list(simp_mean=SI_seq),type="response")
+plot(NA_model$simp_mean, NA_model$abd_trend, pch=16,cex.axis=1.6,cex.lab=1.6,cex=0.5,col="red", xlab = "Mean Simplification", ylab = "Trend" )
+abline(SI_lin, lwd = 2, col = "blue")
+lines(SI_seq,SIQ,lwd=2)
+```
+
+
 ## LPI Grassland
 
 Plot trend ~ slope and trend ~ Mean
-```{r}
+```{r, echo=FALSE}
 ggplot(NA_model, aes(x = GLPI_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess", se = TRUE, linetype = "dashed") + 
@@ -214,7 +244,7 @@ ggplot(NA_model, aes(x = GLPI_mean, y = abd_trend)) +
 
 
 Plot trend ~ slope and trend ~ Mean
-```{r}
+```{r, echo=FALSE}
 ggplot(NA_model, aes(x = FLPI_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
@@ -234,13 +264,48 @@ ggplot(NA_model, aes(x = FLPI_mean, y = abd_trend)) +
 
 ## Edge Density
 calculate the slope and average LPI for each location
-```{r}
+```{r, echo=FALSE}
 ggplot(NA_model, aes(x = ED_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
   labs(
     title = "Relationship Between Edge Density and Trend",
     x = "Mean Edge Density",
+    y = "Abundance Trend (abd_trend)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+```{r}
+ED_quad <- glm(abd_trend ~ ED_mean + I(ED_mean^2), data = NA_model)
+summary(ED_quad)
+ED_lin <- glm(abd_trend ~ ED_mean , data = NA_model)
+summary(ED_lin)
+AIC(ED_quad, ED_lin)
+```
+
+
+Plot of linear and quad model for Mean edge density.
+```{r, echo=FALSE}
+ED_seq<-seq(0,250,25)
+EDQ <- predict(ED_quad,list(ED_mean=ED_seq),type="response")
+plot(NA_model$ED_mean, NA_model$abd_trend, pch=16,cex.axis=1.6,cex.lab=1.6,cex=0.5,col="red", xlab = "Mean Edge Density", ylab = "Trend" )
+abline(ED_lin, lwd = 2, col = "blue")
+lines(ED_seq,EDQ,lwd=2)
+```
+
+### Periphery
+```{r, echo=FALSE}
+ggplot(NA_model, aes(x = Core_distance, y = abd_trend)) +
+  geom_point( alpha = 0.3, size = 2) +  
+  geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
+  labs(
+    title = "Relationship Between distance from core and Trend",
+    x = "Distance from Core Breeding",
     y = "Abundance Trend (abd_trend)"
   ) +
   theme_minimal() +
@@ -257,8 +322,7 @@ ggplot(NA_model, aes(x = ED_mean, y = abd_trend)) +
 
 ## Null model
 ```{r}
-gam_null <- gam(abd_trend ~ 1, data = NA_model)
-glm_null <- glm(abd_trend~1, data = NA_model)
+null_model <- glm(abd_trend ~ 1, data = NA_model)
 ```
 
 
@@ -268,10 +332,10 @@ glm_null <- glm(abd_trend~1, data = NA_model)
 Removed both LPI metrics for now due to high correlation with many variables.
 
 
-### Linear Model
+### Linear Models
 LM 1
 ```{r}
-lm_global <- lm(abd_trend ~ FO_mean + GR_mean +  shdi_mean  + simp_mean + simp_mean*shdi_mean + srd_id, data = NA_model)
+lm_global <- lm(abd_trend ~ FO_mean + GR_mean +  shdi_mean  + simp_mean + simp_mean*shdi_mean + abd + srd_id + Core_distance, data = NA_model)
 summary(lm_global)
 plot(lm_global)
 vif(lm_global)
@@ -281,7 +345,7 @@ vif(lm_global)
 
 LM2
 ```{r}
-lm_global2 <- lm(abd_trend ~  GR_mean +  shdi_mean  + simp_mean + srd_id, data = NA_model)
+lm_global2 <- lm(abd_trend ~  GR_mean +  shdi_mean  + simp_mean + abd + srd_id + Core_distance, data = NA_model)
 summary(lm_global2)
 plot(lm_global2)
 vif(lm_global2)
@@ -289,10 +353,10 @@ vif(lm_global2)
 ```
 
 
-### General Linear Model
+### General Linear Models
 glm 1
 ```{r}
-glm_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean + abd + simp_mean*shdi_mean, family = "gaussian", data = NA_model)
+glm_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean + abd + simp_mean*shdi_mean + srd_id + Core_distance, family = "gaussian", data = NA_model)
 summary(glm_global)
 plot(glm_global)
 vif(glm_global)
@@ -303,147 +367,52 @@ vif(glm_global)
 GLM 2 
 GLM global model removing non-informative parameters from glm 1 (mean simp and abd)
 ```{r}
-glm_global2 <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean*shdi_mean, family = "gaussian", data = NA_model)
+glm_global2 <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + abd + srd_id + Core_distance, family = "gaussian", data = NA_model)
 summary(glm_global2)
 plot(glm_global2)
-vif(glm_global)
+vif(glm_global2)
 
 
 ```
 
 
-### GLM Polynomial
-GLM with squared polynomial
+### GLM Polynomial models
+
+polynomial global
 ```{r}
-square_global <- lm(
-  abd_trend ~ 
-    FO_mean + I(FO_mean^2) +
-    GR_mean + I(GR_mean^2) +
-    ED_mean + I(ED_mean^2) +
-    shdi_mean + I(shdi_mean^2) + 
-    simp_mean + I(simp_mean^2) + 
-    abd + I(abd^2) + 
-    I(simp_mean^2)*I(shdi_mean^2) + 
-    srd_id,
-  data = NA_model
-)
+poly_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean + I(ED_mean^2) + shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean + Core_distance , data = NA_model)
+summary(poly_global)
 
-# Summary of the model
-summary(square_global)
-plot(square_global)
-```
-
-
-Squared polynomial model 2
-Remove FO mean and non-linear term for simp mean
-```{r}
-square_global2 <- lm(
-  abd_trend ~ 
-    GR_mean + I(GR_mean^2) +
-    ED_mean + I(ED_mean^2) +
-    shdi_mean + I(shdi_mean^2) + 
-    simp_mean + 
-    I(simp_mean^2)*I(shdi_mean^2) + 
-    abd + I(abd^2) +
-    srd_id,
-  data = NA_model
-)
-
-# Summary of the model
-summary(square_global2)
-plot(square_global2)
-```
-
-
-
-GLM with cubed polynomial
-```{r}
-cube_global <- lm(
-  abd_trend ~ 
-   FO_mean + I(FO_mean^3) +
-    GR_mean + I(GR_mean^3) +
-    ED_mean + I(ED_mean^3) +
-    shdi_mean + I(shdi_mean^3) + 
-    simp_mean + I(simp_mean^3) + 
-    I(simp_mean^3)*I(shdi_mean^3) + 
-    abd + I(abd^3) +
-    srd_id,
-  data = NA_model
-)
-
-# Summary of the model
-summary(cube_global)
-plot(cube_global)
-```
-
-
-Cube polynomial model 2
-```{r}
-cube_global2 <- lm(
-  abd_trend ~ 
-   FO_mean  +
-    GR_mean + I(GR_mean^3) +
-    shdi_mean + I(shdi_mean^3) + 
-    simp_mean + I(simp_mean^3) + 
-    I(simp_mean^3)*I(shdi_mean^3) + 
-    abd + I(abd^3) +
-    srd_id,
-  data = NA_model
-)
-
-# Summary of the model
-summary(cube_global2)
-plot(cube_global2)
-```
-
-
-
-GLM with quadratic polynomial
-```{r}
-quadratic_global <- lm(
-  abd_trend ~ 
-    FO_mean + I(FO_mean^4) +
-    GR_mean + I(GR_mean^4) +
-    ED_mean + I(ED_mean^4) +
-    shdi_mean + I(shdi_mean^4) + 
-    simp_mean + I(simp_mean^4) + 
-    I(simp_mean^4)*I(shdi_mean^4) + 
-    abd + I(abd^4) +
-    srd_id,
-  data = NA_model
-)
-
-# Summary of the model
-summary(quadratic_global)
-plot(quadratic_global)
 ```
 
 
 ```{r}
-quadratic_global2 <- lm(
-  abd_trend ~ 
-    FO_mean + 
-    GR_mean + I(GR_mean^4) +
-    shdi_mean + I(shdi_mean^4) + 
-    simp_mean + I(simp_mean^4) + 
-    I(simp_mean^4)*I(shdi_mean^4) +
-    abd + I(abd^4) +
-    srd_id,
-  data = NA_model
-)
-
-# Summary of the model
-summary(quadratic_global2)
-plot(quadratic_global2)
+poly_global2 <- glm(abd_trend ~ FO_mean + GR_mean +  shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
+summary(poly_global2)
 ```
 
+
+```{r}
+poly_global3 <- glm(abd_trend ~ FO_mean + GR_mean  + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
+summary(poly_global3)
+```
 
 ### General Additive Models
 GAM 1
 ```{r}
-gam_global <- gam(abd_trend ~ s(FO_mean) + s(GR_mean) + s(ED_mean) +  s(shdi_mean) + s(simp_mean) + s(abd) +  s(shdi_mean, simp_mean) + s(longitude, latitude), data = NA_model, method = "REML")
+gam_global <- gam(abd_trend ~ 
+                    s(FO_mean) + 
+                    s(GR_mean) + 
+                    s(ED_mean) +  
+                    s(shdi_mean) + 
+                    s(simp_mean) + 
+                    (abd) +  
+                    te(shdi_mean, simp_mean) + 
+                    s(longitude, latitude, bs= "tp", k = 300 ) + 
+                    s(Core_distance), 
+                  data = NA_model, method = "ML")
 summary(gam_global)
-plot(gam_global)
+draw(gam_global)
 gam.check(gam_global)
 
 ```
@@ -452,17 +421,45 @@ gam.check(gam_global)
 GAM 2
 Based on the EDF in the gam_global model, I will change terms with EDF near 1 to linear terms and drop non-informative parameters
 ```{r}
-gam_global2 <- gam(abd_trend ~ s(FO_mean) + s(GR_mean) + s(ED_mean) +  s(shdi_mean) + simp_mean + s(abd) +  s(shdi_mean, simp_mean) + s(longitude, latitude), data = NA_model, method = "REML")
+gam_global2 <- gam(abd_trend ~ 
+                     s(FO_mean) + 
+                     s(GR_mean) + 
+                     s(ED_mean) +  
+                     s(shdi_mean) + 
+                     simp_mean + 
+                     s(abd) +  
+                     te(shdi_mean, simp_mean) +
+                     s(longitude, latitude), data = NA_model, method = "ML")
 summary(gam_global2)
 gam.check(gam_global2)
-
+draw(gam_global2)
 ```
 
 
-### Global models AIC
+Substitute the smooth term for location for the fixed term of distance from core. distance was significant in a single model but not in the above gams because the smoothed term of location is likely absorbing much of its variation
 ```{r}
-globals <- AIC(gam_null, lm_global, lm_global2, glm_global, glm_global2, square_global, square_global2, cube_global, cube_global2, quadratic_global, quadratic_global2, gam_global, gam_global2)
+gam_global3 <- gam(abd_trend ~
+                     s(FO_mean) + 
+                     s(GR_mean) + 
+                     s(ED_mean, k = 30) +  
+                     shdi_mean + 
+                     simp_mean + 
+                     s(abd) +  
+                     te(shdi_mean, simp_mean) + 
+                     s(longitude, latitude, bs= "tp", k = 300), 
+                   data = NA_model, method = "ML")
+summary(gam_global3)
+draw(gam_global3)
+gam.check(gam_global3)
+```
 
+
+
+### Global models AIC
+```{r, echo=FALSE}
+globals <- AIC(null_model, lm_global, lm_global2, glm_global, glm_global2, poly_global, poly_global2, poly_global3, gam_global, gam_global2, gam_global3)
+
+globals <- globals %>% dplyr::arrange(AIC)
 globals
 ```
 
@@ -472,22 +469,37 @@ globals
 ### Prediction 1
 
 ```{r}
-P1gam <- gam(abd_trend ~ s(mean_shdi) + s(mean_simp) + s(longitude, latitude), data = upsa_trd)
+P1gam <- gam(abd_trend ~ s(shdi_mean) + s(ED_mean) + s(simp_mean) + s(longitude, latitude), data = NA_model)
 summary(P1gam)
-plot(P1gam)
+plot(P1gam, pages = 1, seWithMean = TRUE)
 gam.check(P1gam)
 ```
 
-glm
-```{r}
-P1glm <- glm(abd_trend ~ mean_shdi + mean_simp + srd_id, data = upsa_trd)
-P1glm2 <- glm(abd_trend ~ mean_shdi + mean_simp, data = upsa_trd)
 
-summary(P1glm)
-plot(P1glm)
-```
+
+
 
 ```{r}
-AIC(P1gam, P1glm, P1glm2, gam_null)
+P1gam2 <- gam(abd_trend ~ 
+                s(shdi_mean) + 
+                s(ED_mean, k = 30) + 
+                s(snat_mean) + 
+                s(longitude, latitude, bs= "tp", k = 300), 
+              data = NA_model)
+summary(P1gam2)
+plot(P1gam2, pages = 1, seWithMean = TRUE)
+gam.check(P1gam2)
 ```
+
+### Prediction 2
+```{r}
+P2gam <- gam(abd_trend ~ s(shdi_mean) + 
+               s(simp_mean) + 
+               te(shdi_mean, simp_mean) + 
+               s(longitude, latitude, bs= "tp", k = 300)
+             , data = NA_model)
+summary(P2gam)
+draw(P2gam)
+```
+
 

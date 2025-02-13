@@ -12,44 +12,40 @@ output:
 ---
 
 # Candidate Models
+
 **Prediction 1**
 
 Breeding regions declining in trend will be correlated with low landscape heterogeneity and simplified agricultural landscapes.
 
 $Trend = Δ SHDI + Δ Edge Density + Δ Cropland + (1 | Location)$
 
-
 **Prediction 2**
 
-Greater landscape heterogeneity will lower the negative effects of landscape simplification on breeding trends.
-“Is the effect of landscape diversity on Upland Sandpiper population dynamics dependent on the degree of simplification?” 
+Greater landscape heterogeneity will lower the negative effects of landscape simplification on breeding trends. “Is the effect of landscape diversity on Upland Sandpiper population dynamics dependent on the degree of simplification?”
 
 $Trend = Δ SHDI + Δ Cropland + Δ SHDI * Δ Cropland + (1 | Location)$
 
 **Prediction 3**
 
-Forage agriculture and grasslands are associated with positive trends and high abundance. 
-“How are trends in forage agriculture and grasslands associated with trends and abundance of Upland Sandpiper?”
+Forage agriculture and grasslands are associated with positive trends and high abundance. “How are trends in forage agriculture and grasslands associated with trends and abundance of Upland Sandpiper?”
 
 $Trend = Δ Forage Ag + Δ Grassland + (1 | Location)$
 
 “Does configuration of forage and grassland habitats influence their association with trends and abundance
 
-$Trend = Δ Forage Agriculture * Δ Forage Ag LPI + Δ Grassland *	 Δ Grassland LPI + (1 | Location)$
+$Trend = Δ Forage Agriculture * Δ Forage Ag LPI + Δ Grassland *  Δ Grassland LPI + (1 | Location)$
 
 **Prediction 4**
 
-Trends decline or become more variable with increasing distance from the core breeding range. Conversely, trends will be more stable near the core breeding region. 
+Trends decline or become more variable with increasing distance from the core breeding range. Conversely, trends will be more stable near the core breeding region.
 
 $Trend = Periphery + (1 | Location)$
-
 
 **Prediction 5**
 
 Geographical variation in abundance is driven by marginal habitat at the periphery.
 
 $Trend = Periphery + Δ SHDI +  Δ Cropland + (1 | Location) + (1| Year)$
-
 
 ```{r, message=FALSE, warning=FALSE, include=FALSE}
 
@@ -68,10 +64,10 @@ library(mgcv)
 library(GGally)
 library(car)
 library(gratia)
+library(ggcorrplot)
+library(brms)
+library(tidybayes)
 ```
-
-
-
 
 ```{r, include=FALSE}
 #Edited trend df
@@ -79,21 +75,16 @@ NA_model <- readRDS("Data/NA_model.rds")
 names(NA_model)
 ```
 
-
-
 # Response Distribution
 
-
 Distribution of trend response variable.
+
 ```{r, echo = FALSE }
 ggplot(NA_model, aes(x = abd_trend)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
   theme_minimal()
 
 ```
-
-
-
 
 ```{r, echo=FALSE}
 #Distribution of abundance response variable. 
@@ -103,11 +94,10 @@ ggplot(NA_model, aes(x = abd)) +
 
 ```
 
-
 ## Periphery
 
-
 Mapping of trend estimates with red points identified as "core"breeding areas as defined by Morans I.
+
 ```{r, echo=FALSE}
 core_map <- NA_model |> 
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
@@ -121,28 +111,55 @@ ggplot() +
 
 ```
 
-
-Distribution of abundance estimates. 
+Distribution of abundance estimates.
 
 # Predictor relationships
 
 Correlation matrix before aggregating predictors.
+
 ```{r, echo=FALSE}
-library(ggcorrplot)
 # List of predictors to include
-predictors <- c(
+mean_predictors <- c(
     "shdi_mean" , "simp_mean" , "FLPI_mean" , "GLPI_mean" , "ED_mean" , "FO_mean" , "GR_mean" , "abd", "Core_distance", "snat_mean" 
 )
 
-filtered_data <- NA_model %>%
-  dplyr::select(all_of(predictors))
+mean_filtered_data <- NA_model %>%
+  dplyr::select(all_of(mean_predictors))
 
-cor_matrix <- cor(filtered_data, use = "complete.obs", method = "pearson")
+mean_cor_matrix <- cor(mean_filtered_data, use = "complete.obs", method = "pearson")
 
-ggcorrplot(cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
+ggcorrplot(mean_cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
 ```
 
 I still need to determine a pearsons correlation coefficient threshold to report. Some literature has used 0.7 and I will go with that for now. I still need to develop a better backing for this and if this is something I will continue to use going forward...
+
+```{r}
+# List of predictors to include
+slope_predictors <- c(
+    "shdi_slope" , "simp_slope" , "FLPI_slope" , "GLPI_slope" , "ED_slope" , "FO_slope" , "GR_slope" , "abd", "Core_distance", "snat_slope" 
+)
+
+slope_filtered_data <- NA_model %>%
+  dplyr::select(all_of(slope_predictors))
+
+slope_cor_matrix <- cor(slope_filtered_data, use = "complete.obs", method = "pearson")
+
+ggcorrplot(slope_cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
+```
+
+```{r}
+# List of predictors to include
+all_predictors <- c(
+    "shdi_mean" , "simp_mean" ,  "ED_mean" , "FO_mean" , "GR_mean" , "abd", "Core_distance", "snat_mean", "shdi_slope" , "simp_slope" ,  "ED_slope" , "FO_slope" , "GR_slope" , "snat_slope" 
+)
+
+all_filtered_data <- NA_model %>%
+  dplyr::select(all_of(all_predictors))
+
+all_cor_matrix <- cor(all_filtered_data, use = "complete.obs", method = "pearson")
+
+ggcorrplot(all_cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
+```
 
 ```{r,  echo=FALSE ,message=FALSE, fig.width=10, fig.height=7}
 
@@ -156,7 +173,6 @@ ggpairs(
 ```
 
 ## Shannon Diversity Index
-
 
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = shdi_mean, y = abd_trend)) +
@@ -176,10 +192,10 @@ ggplot(NA_model, aes(x = shdi_mean, y = abd_trend)) +
 
 ```
 
-
 ## Landscape Simplification
 
 plot simplification slope against trend
+
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = simp_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
@@ -197,7 +213,6 @@ ggplot(NA_model, aes(x = simp_mean, y = abd_trend)) +
   )
 ```
 
-
 ```{r}
 SI_cube <- glm(abd_trend ~ simp_mean + I(simp_mean^2) + I(simp_mean^3), data = NA_model)
 summary(SI_cube)
@@ -208,8 +223,8 @@ summary(SI_lin)
 AIC(SI_cube, SI_lin)
 ```
 
+Plotting of linear and quad model for mean landscape simplification.
 
-Plotting of linear and quad model for mean landscape simplification. 
 ```{r, echo=FALSE}
 SI_seq<-seq(0,90,25)
 SIQ <- predict(SI_cube,list(simp_mean=SI_seq),type="response")
@@ -218,10 +233,10 @@ abline(SI_lin, lwd = 2, col = "blue")
 lines(SI_seq,SIQ,lwd=2)
 ```
 
-
 ## LPI Grassland
 
-Plot trend ~ slope and trend ~ Mean
+Plot trend \~ slope and trend \~ Mean
+
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = GLPI_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
@@ -242,8 +257,8 @@ ggplot(NA_model, aes(x = GLPI_mean, y = abd_trend)) +
 
 ## LPI Forage
 
+Plot trend \~ slope and trend \~ Mean
 
-Plot trend ~ slope and trend ~ Mean
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = FLPI_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
@@ -263,7 +278,9 @@ ggplot(NA_model, aes(x = FLPI_mean, y = abd_trend)) +
 ```
 
 ## Edge Density
+
 calculate the slope and average LPI for each location
+
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = ED_mean, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
@@ -280,6 +297,7 @@ ggplot(NA_model, aes(x = ED_mean, y = abd_trend)) +
     axis.text = element_text(size = 12)
   )
 ```
+
 ```{r}
 ED_quad <- glm(abd_trend ~ ED_mean + I(ED_mean^2), data = NA_model)
 summary(ED_quad)
@@ -288,8 +306,8 @@ summary(ED_lin)
 AIC(ED_quad, ED_lin)
 ```
 
-
 Plot of linear and quad model for Mean edge density.
+
 ```{r, echo=FALSE}
 ED_seq<-seq(0,250,25)
 EDQ <- predict(ED_quad,list(ED_mean=ED_seq),type="response")
@@ -299,6 +317,7 @@ lines(ED_seq,EDQ,lwd=2)
 ```
 
 ### Periphery
+
 ```{r, echo=FALSE}
 ggplot(NA_model, aes(x = Core_distance, y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
@@ -316,24 +335,22 @@ ggplot(NA_model, aes(x = Core_distance, y = abd_trend)) +
   )
 ```
 
-
 # Model Runs
 
-
 ## Null model
+
 ```{r}
 null_model <- glm(abd_trend ~ 1, data = NA_model)
 ```
 
-
 ## Global Models
-
 
 Removed both LPI metrics for now due to high correlation with many variables.
 
-
 ### Linear Models
+
 LM 1
+
 ```{r}
 lm_global <- lm(abd_trend ~ FO_mean + GR_mean +  shdi_mean  + simp_mean + simp_mean*shdi_mean + abd + srd_id + Core_distance, data = NA_model)
 summary(lm_global)
@@ -342,8 +359,8 @@ vif(lm_global)
 
 ```
 
-
 LM2
+
 ```{r}
 lm_global2 <- lm(abd_trend ~  GR_mean +  shdi_mean  + simp_mean + abd + srd_id + Core_distance, data = NA_model)
 summary(lm_global2)
@@ -352,9 +369,10 @@ vif(lm_global2)
 
 ```
 
-
 ### General Linear Models
+
 glm 1
+
 ```{r}
 glm_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean + abd + simp_mean*shdi_mean + srd_id + Core_distance, family = "gaussian", data = NA_model)
 summary(glm_global)
@@ -363,9 +381,8 @@ vif(glm_global)
 
 ```
 
+GLM 2 GLM global model removing non-informative parameters from glm 1 (mean simp and abd)
 
-GLM 2 
-GLM global model removing non-informative parameters from glm 1 (mean simp and abd)
 ```{r}
 glm_global2 <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + abd + srd_id + Core_distance, family = "gaussian", data = NA_model)
 summary(glm_global2)
@@ -375,22 +392,20 @@ vif(glm_global2)
 
 ```
 
-
 ### GLM Polynomial models
 
 polynomial global
+
 ```{r}
 poly_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean + I(ED_mean^2) + shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean + Core_distance , data = NA_model)
 summary(poly_global)
 
 ```
 
-
 ```{r}
 poly_global2 <- glm(abd_trend ~ FO_mean + GR_mean +  shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
 summary(poly_global2)
 ```
-
 
 ```{r}
 poly_global3 <- glm(abd_trend ~ FO_mean + GR_mean  + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
@@ -398,7 +413,9 @@ summary(poly_global3)
 ```
 
 ### General Additive Models
+
 GAM 1
+
 ```{r}
 gam_global <- gam(abd_trend ~ 
                     s(FO_mean) + 
@@ -417,9 +434,8 @@ gam.check(gam_global)
 
 ```
 
+GAM 2 Based on the EDF in the gam_global model, I will change terms with EDF near 1 to linear terms and drop non-informative parameters
 
-GAM 2
-Based on the EDF in the gam_global model, I will change terms with EDF near 1 to linear terms and drop non-informative parameters
 ```{r}
 gam_global2 <- gam(abd_trend ~ 
                      s(FO_mean) + 
@@ -435,8 +451,8 @@ gam.check(gam_global2)
 draw(gam_global2)
 ```
 
-
 Substitute the smooth term for location for the fixed term of distance from core. distance was significant in a single model but not in the above gams because the smoothed term of location is likely absorbing much of its variation
+
 ```{r}
 gam_global3 <- gam(abd_trend ~
                      s(FO_mean) + 
@@ -453,18 +469,39 @@ draw(gam_global3)
 gam.check(gam_global3)
 ```
 
+```{r}
+gam_global4 <-  gam(abd_trend ~
+                     s(FO_mean) + 
+                     s(FO_slope) +
+                     s(GR_mean) + 
+                     s(GR_slope) +
+                     s(ED_mean, k = 30) + 
+                     s(ED_slope) +
+                     shdi_mean + 
+                     s(shdi_slope) +
+                     simp_mean + 
+                     s(simp_slope) +
+                     s(abd) +  
+                     te(shdi_mean, simp_mean) + 
+                     te(shdi_slope, simp_mean) + 
+                     te(shdi_mean, shdi_slope) +
+                     te(simp_mean, simp_slope) +
+                     s(longitude, latitude, bs= "tp", k = 300), 
+                   data = NA_model, method = "REML")
 
+summary(gam_global4)
+gam.check(gam_global4)
+draw(gam_global4)
+```
 
 ### Global models AIC
+
 ```{r, echo=FALSE}
 globals <- AIC(null_model, lm_global, lm_global2, glm_global, glm_global2, poly_global, poly_global2, poly_global3, gam_global, gam_global2, gam_global3)
 
 globals <- globals %>% dplyr::arrange(AIC)
 globals
 ```
-
-
-
 
 ### Prediction 1
 
@@ -474,10 +511,6 @@ summary(P1gam)
 plot(P1gam, pages = 1, seWithMean = TRUE)
 gam.check(P1gam)
 ```
-
-
-
-
 
 ```{r}
 P1gam2 <- gam(abd_trend ~ 
@@ -492,6 +525,7 @@ gam.check(P1gam2)
 ```
 
 ### Prediction 2
+
 ```{r}
 P2gam <- gam(abd_trend ~ s(shdi_mean) + 
                s(simp_mean) + 
@@ -502,4 +536,80 @@ summary(P2gam)
 draw(P2gam)
 ```
 
+# Bayesian GAM
 
+Read df with all estimates and their 100 folds
+
+```{r}
+NA_folds <- readRDS("Data/NA_folds.rds")
+```
+
+test run on a small sample
+
+```{r}
+# Select 5 random locations
+test_locations <- sample(unique(NA_folds$srd_id), 150)
+
+# Subset the data to include only these locations
+NA_folds_test <- NA_folds %>%
+  filter(srd_id %in% test_locations)
+
+```
+
+```{r}
+bayes_model1_test <- brm(
+  abd_trend ~ 
+     (1 | srd_id),
+  data = NA_folds_test,
+  family = gaussian(),  
+  chains = 4,                  # Use 4 chains for better convergence
+  iter = 8000,                 # More iterations to improve ESS
+  warmup = 2000,               # Longer warmup to stabilize chains
+  cores = 8,                   # Fully utilize your 8-core system
+  control = list(
+    adapt_delta = 0.99,        # More conservative step size to avoid divergences
+    max_treedepth = 15         # Allows deeper exploration of the posterior
+  )
+)
+
+```
+
+```{r}
+summary(bayes_model1_test)
+
+post_summary_test <- bayes_model1_test %>%
+  spread_draws(r_srd_id[srd_id,]) %>%  # Correct structure for random effects
+  median_qi(trend_est = r_srd_id)
+
+post_summary_test <- post_summary_test %>%
+  mutate(ci_width = .upper - .lower)
+
+print(post_summary_test)
+
+
+```
+
+```{r}
+ggplot(post_summary_test, aes(x = trend_est)) +
+  geom_histogram(binwidth = 5, fill = "blue", alpha = 0.6, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Median Posterior Trend Estimates",
+    x = "Median Posterior Trend Estimate",
+    y = "Count (Number of Locations)"
+  )
+
+
+ggplot(post_summary_test, aes(x = reorder(srd_id, trend_est), y = trend_est)) +
+  geom_point(color = "blue", size = 2) +  # Plot median estimates
+  geom_errorbar(aes(ymin = .lower, ymax = .upper), width = 0.2) +  # Add 95% CIs
+  theme_minimal() +
+  labs(
+    title = "Posterior Trend Estimates per Location",
+    x = "Location ID (Ordered by Trend)",
+    y = "Median Posterior Trend Estimate"
+  ) +
+  theme(axis.text.x = element_blank())  # Hide x-axis labels if too many locations
+
+
+```

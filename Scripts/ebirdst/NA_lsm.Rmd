@@ -80,6 +80,7 @@ lc_classes
 utrends_buff<- st_read("Trends_sf/utrends_buff.gpkg", layer = "ubuff")
 ```
 
+
 ```{r, include = FALSE}
 
 # Initialize an empty list to store results
@@ -248,7 +249,7 @@ NA_simp <- lsm_NA_simp |>
   ) |> 
   arrange(srd_id)                           # Sort rows by year and buffer ID
 
-NA_simp <- NA_simp[, -c(3,6)]
+NA_simp <- NA_simp[, -c(3)]
 ```
 
 
@@ -429,15 +430,20 @@ utrends <- FO_slopes %>%
 # Periphery 
 Load LISA results from GeoDA
 ```{r}
-LISA <- read.csv("C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/vector_pixels/Moran/LISA_results.csv")
-LISA <- LISA[,-c(1:6, 8:19)]
+LISA <- read.csv("C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/eBird trend data/vector_pixels/Moran/LISA_results_all.csv")
+LISA <- LISA[,-c(1:6, 8:18, 20)]
 
 LISA$Core <- ifelse(LISA$LISA_CL == 1, 1, 0)
 
 #r bind
-utrends <- LISA %>%
+utrend <- LISA %>%
   dplyr::select(srd_id, Core) %>%
   left_join(utrends, by = c("srd_id"))
+
+utrends <- LISA %>%
+  filter(srd_id %in% utrends$srd_id) %>%  # Retain only locations present in utrends_buff
+  dplyr::select(srd_id, Core) %>%  # Keep only relevant columns
+  left_join(utrends, by = "srd_id")
 ```
 
 
@@ -449,6 +455,8 @@ nn_result <- nn2(data = core_locations, query = utrends[, c("latitude", "longitu
 
 utrends$Core_distance <- as.numeric(nn_result$nn.dists)
 ```
+
+
 
 
 ## Save
@@ -466,3 +474,43 @@ write.csv(NA_model, "Data/NA_model.csv", row.names = FALSE)
 
 ```
 
+
+
+
+Read trend 100 ensemble estimates 
+```{r}
+utrend_folds <- readRDS("Data/utrend_folds.rds")
+utrend_folds <- utrend_folds %>%
+    filter(!(srd_id >= 126707 & srd_id <= 171704))
+
+```
+
+Calculate cumulative trend in relative abundance using compound interest formula
+```{r}
+utrend_folds <- utrend_folds %>%
+  mutate(abd_ppy = round(abd_ppy, 7)) %>%
+  mutate(abd_trend = 100 * ((1 + abd_ppy / 100)^(2022 - 2012) - 1))
+```
+
+
+Copy NA_model df and remove trend information, leaving srd_id and landcover information
+```{r}
+srd_data <- NA_model %>%
+  dplyr::select(-c(27:35))
+```
+
+
+many to one rbind to combine information for each srd_id to the 100 fold estimates
+```{r}
+NA_folds <- utrend_folds %>%
+  left_join(srd_data, by = "srd_id")
+
+NA_folds <- NA_folds %>%
+  dplyr::select(-c(1:2))
+```
+
+
+save NA_folds df
+```{r}
+saveRDS(NA_folds, "Data/NA_folds.rds")
+```

@@ -194,3 +194,87 @@ $Ay = A2017 × (1 + r)^{y-2017}$
 ```
 
 
+# install packages from CRAN (unless installed)
+pckgs_needed <- c(
+  "tidyverse",
+  "brms",
+  "rstan",
+  "rstanarm",
+  "remotes",
+  "tidybayes",
+  "bridgesampling",
+  "shinystan",
+  "mgcv"
+)
+pckgs_installed <- installed.packages()[,"Package"]
+pckgs_2_install <- pckgs_needed[!(pckgs_needed %in% pckgs_installed)]
+if(length(pckgs_2_install)) {
+  install.packages(pckgs_2_install)
+} 
+
+# install additional packages from GitHub (unless installed)
+if (! "aida" %in% pckgs_installed) {
+  remotes::install_github("michael-franke/aida-package")
+}
+if (! "faintr" %in% pckgs_installed) {
+  remotes::install_github("michael-franke/faintr")
+}
+if (! "cspplot" %in% pckgs_installed) {
+  remotes::install_github("CogSciPrag/cspplot")
+}
+
+# load the required packages
+x <- lapply(pckgs_needed, library, character.only = TRUE)
+library(aida)
+library(faintr)
+library(cspplot)
+
+# these options help Stan run faster
+options(mc.cores = parallel::detectCores())
+
+# use the CSP-theme for plotting
+theme_set(theme_csp())
+
+# global color scheme from CSP
+project_colors = cspplot::list_colors() |> pull(hex)
+# names(project_colors) <- cspplot::list_colors() |> pull(name)
+
+# setting theme colors globally
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = project_colors)
+}
+scale_fill_discrete <- function(...) {
+  scale_fill_manual(..., values = project_colors)
+}
+
+
+
+#calcualte cumulative trend in abd
+utrends_folds <- utrends_folds %>%
+  mutate(abd_ppy = round(abd_ppy, 7)) %>%
+  mutate(abd_trend = 100 * ((1 + abd_ppy / 100)^(2022 - 2012) - 1)) %>%
+  group_by(srd_id) %>% 
+  mutate(trend_stdev = sd(abd_trend))
+
+#subset SD
+trend_sd <- utrends_folds %>%
+  dplyr::select(srd_id, trend_stdev) %>%
+  distinct()
+#filter trend CI width
+utrends <- raw_utrends %>%
+  mutate(CI_width = abd_trend_upper - abd_trend_lower) %>%
+  left_join(trend_sd, by = "srd_id") %>%
+  rename(CI_stdev = trend_stdev)
+
+ggplot(utrends, aes(x = CI_width)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+ggplot(utrends, aes(x = CI_stdev)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal()
+
+#utrends <- utrends %>% 
+filter(!(srd_id >= 126707 & srd_id <= 171704)) %>% 
+  filter(CI_width <= 50) %>%
+  filter(CI_stdev <= 20)

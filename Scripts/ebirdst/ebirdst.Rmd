@@ -89,53 +89,29 @@ Create object with upsa fold estimates and calculate the width of the CI and Sta
 ```{r}
 utrends_folds <- load_trends("Upland Sandpiper", fold_estimates = TRUE)
 
-utrends_folds <- utrends_folds %>%
-  mutate(abd_ppy = round(abd_ppy, 7)) %>%
-  mutate(abd_trend = 100 * ((1 + abd_ppy / 100)^(2022 - 2012) - 1)) %>%
-  group_by(srd_id) %>% 
-  mutate(trend_stdev = sd(abd_trend))
+# Write a csv for all fold estimates 
+write.csv(utrends_folds, file = "Data/utrend_folds.csv", row.names = FALSE)
+write_rds(utrends_folds, file = "Data/utrend_folds.rds")
 
-trend_sd <- utrends_folds %>%
-  dplyr::select(srd_id, trend_stdev) %>%
-  distinct()
-
-utrends <- raw_utrends %>%
-  mutate(CI_width = abd_trend_upper - abd_trend_lower) %>%
-  left_join(trend_sd, by = "srd_id") %>%
-  rename(CI_stdev = trend_stdev)
-
-ggplot(utrends, aes(x = CI_width)) +
-  geom_histogram(bins = 30, fill = "blue", color = "black") +
-  theme_minimal()
-
-ggplot(utrends, aes(x = CI_stdev)) +
-  geom_histogram(bins = 30, fill = "blue", color = "black") +
-  theme_minimal()
 ```
 
 
 filter to remove AK and YT trends, CI width, and st dev. Plot distribution of remaining trends after filtering. 
 ```{r}
-utrends <- utrends %>% 
-  filter(!(srd_id >= 126707 & srd_id <= 171704)) %>% 
-  filter(CI_width <= 50) %>%
-  filter(CI_stdev <= 20)
+utrends <- raw_utrends %>% 
+  filter(!(srd_id >= 126707 & srd_id <= 171704))
 
 ggplot(utrends, aes(x = abd_trend)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
   theme_minimal()
 
-#saveRDS(utrends, "Data/utrends.rds")
+saveRDS(utrends, "Data/utrends.rds")
 ```
-
-
 
 
 
 # Spatial Buffer for predictor grid
 Using utrends_st, make the spatial format that will be used in landscape metric code
-
-
 Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
 ```{r}
 #set to 4326 then transform later during lsm
@@ -149,37 +125,14 @@ ggplot() +
   labs(title = "13.5 km Circular Buffers", x = "Longitude", y = "Latitude")
 
 
-#write_sf(utrends_buff,"Trends_sf/utrends_buff.gpkg",layer = "ubuff")
+write_sf(utrends_buff,"Trends_sf/utrends_buff.gpkg",layer = "ubuff")
 
 ```
 
 
 
 
-```{r}
-library(sf)
-library(spdep)
 
-# Assuming utrends_buff_5070 is your sf object in EPSG:5070
-# Create queen contiguity neighbors with a snap tolerance (e.g., 500 m)
-nb_queen <- poly2nb(utrends_buff_5070, queen = TRUE, snap = 500)
-
-# Optionally, identify isolated polygons (islands)
-isolated <- which(card(nb_queen) == 0)
-if(length(isolated) > 0) {
-  cat("Isolated polygons (potential islands):", isolated, "\n")
-}
-
-# Convert the neighbor list to a spatial weights list using zero.policy = TRUE
-listw_queen <- nb2listw(nb_queen, zero.policy = TRUE)
-
-# Calculate local Moran's I for your variable (e.g., 'value')
-local_moran <- localmoran(utrends_buff_5070$abd, listw_queen, zero.policy = TRUE)
-
-# Inspect the results
-head(local_moran)
-
-```
 
 
 

@@ -3,3 +3,5 @@
 .RData
 .Ruserdata
 /Scripts/ebirdst/Rasters
+/Rasters
+Data/Bayesm1.rds

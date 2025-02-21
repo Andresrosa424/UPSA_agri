@@ -47,6 +47,8 @@ Geographical variation in abundance is driven by marginal habitat at the periphe
 
 $Trend = Periphery + Δ SHDI +  Δ Cropland + (1 | Location) + (1| Year)$
 
+# Library
+
 ```{r, message=FALSE, warning=FALSE, include=FALSE}
 
 library(dplyr)
@@ -545,25 +547,52 @@ NA_folds <- readRDS("Data/NA_folds.rds")
 ```
 
 test run on a small sample
-
 ```{r}
 # Select 5 random locations
-test_locations <- sample(unique(NA_folds$srd_id), 150)
+test_locations <- sample(unique(NA_folds$srd_id), 50)
 
 # Subset the data to include only these locations
-NA_folds_test <- NA_folds %>%
+NA_fol <- NA_folds %>%
   filter(srd_id %in% test_locations)
 
+NA_fol <- NA_folds %>%
+ filter(!(srd_id >= 242031))
 ```
 
+
+Prior check
 ```{r}
-bayes_model1_test <- brm(
+# Run the model using priors only
+prior_check <- brm(
+  abd_trend ~ (1 | srd_id),
+  data = NA_folds,
+  family = gaussian(),
+  prior = c(
+    prior(normal(-13.98, 12), class = Intercept),  # Our informative prior
+    prior(exponential(1), class = sd),
+    prior(exponential(1), class = sigma)
+  ),
+  sample_prior = "only",  # Generate samples only from priors, not the data
+  chains = 2,                
+  iter = 4000,              
+  warmup = 1000,            
+  cores = 4                 
+)
+
+# Plot the prior predictive distribution for the intercept
+plot(prior_check)
+```
+
+
+
+```{r}
+bayes_model1 <- brm(
   abd_trend ~ 
      (1 | srd_id),
-  data = NA_folds_test,
+  data = NA_folds,
   family = gaussian(),  
   chains = 4,                  # Use 4 chains for better convergence
-  iter = 8000,                 # More iterations to improve ESS
+  iter = 12000,                 # More iterations to improve ESS
   warmup = 2000,               # Longer warmup to stabilize chains
   cores = 8,                   # Fully utilize your 8-core system
   control = list(
@@ -575,18 +604,20 @@ bayes_model1_test <- brm(
 ```
 
 ```{r}
-summary(bayes_model1_test)
+saveRDS(bayes_model1, "Data/Bayesm1.rds")
 
-post_summary_test <- bayes_model1_test %>%
+summary(bayes_model1)
+
+post_summary <- bayes_model1 %>%
   spread_draws(r_srd_id[srd_id,]) %>%  # Correct structure for random effects
   median_qi(trend_est = r_srd_id)
 
-post_summary_test <- post_summary_test %>%
+post_summary <- post_summary %>%
   mutate(ci_width = .upper - .lower)
 
-print(post_summary_test)
+print(post_summary)
 
-
+saveRDS(post_summary, "Data/post_summary.rds")
 ```
 
 ```{r}
@@ -613,3 +644,92 @@ ggplot(post_summary_test, aes(x = reorder(srd_id, trend_est), y = trend_est)) +
 
 
 ```
+
+
+## BRM model 2 with priors
+
+
+```{r}
+bayes_model2 <- brm(
+  abd_trend ~ (1 | srd_id),  
+  data = NA_folds,  
+  family = gaussian(),
+  
+  prior = c(
+    prior(normal(-13.98, 12), class = Intercept),  
+    prior(exponential(1), class = sd),             
+    prior(exponential(1), class = sigma)           
+  ),
+  chains = 4,                
+  iter = 12000,              
+  warmup = 2000,             
+  cores = 16,  
+  control = list(
+    adapt_delta = 0.95,      
+    max_treedepth = 12       
+  )
+)
+
+```
+
+```{r}
+summary(bayes_model2)
+post_summary2 <- bayes_model2 %>%
+  spread_draws(r_srd_id[srd_id,]) %>%  
+  median_qi(trend_est = r_srd_id)
+
+post_summary2 <- post_summary2 %>%
+  mutate(ci_width = .upper - .lower)
+
+print(post_summary2)
+
+saveRDS(post_summary2, "Data/post_summary2.rds")
+
+plot(bayes_model2)
+```
+
+
+```{r}
+ggplot(post_summary2, aes(x = ci_width)) +
+  geom_histogram(binwidth = 0.005, fill = "blue", alpha = 0.6, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Ci widths",
+    x = "CI Width",
+    y = "Count (Number of Locations)"
+  )
+
+ggplot(post_summary2, aes(x = srd_id, y = ci_width)) +
+  geom_point() +
+  geom_hline(yintercept = median(post_summary2$ci_width), linetype = "dashed", color = "red") +
+  labs(title = "CI Widths Across Locations",
+       y = "Credible Interval Width",
+       x = "Location (srd_id)") +
+  theme_minimal()
+```
+
+## Gaussian Process model
+```{r}
+bayes_model_gp <- brm(
+  abd_trend ~ gp(longitude, latitude),  # GP smooths spatial variation
+  data = NA_folds,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = Intercept)),
+  chains = 4,                
+  iter = 16000,              
+  warmup = 3000,            
+  cores = 16,                
+  control = list(
+    adapt_delta = 0.99,      
+    max_treedepth = 15       
+  )
+)
+```
+
+
+```{r}
+summary(bayes_model_gp)
+plot(bayes_model_gp)
+```
+

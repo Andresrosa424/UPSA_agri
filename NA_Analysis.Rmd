@@ -15,37 +15,43 @@ output:
 
 **Prediction 1**
 
-Breeding regions declining in trend will be correlated with low landscape heterogeneity and simplified agricultural landscapes.
+Breeding areas that increased in abundance will be in more diverse landscapes with decreased (or low) agricultural intensity.
+Landscapes that became simplified agriculturally over the period will have decreased abundance.
 
-$Trend = Δ SHDI + Δ Edge Density + Δ Cropland + (1 | Location)$
+$Trend = Δ SHDI +  mean SHDI + Δ Edge Density + mean Edge Density + mean Simplification + Δ Simplification$
+
+Breeding areas peripheral to historical core breeding areas experienced declines driven by homogeneous landscapes.
+
+$Trend = Δ SHDI + mean SHDI + Δ Edge Density + mean Edge Density + mean Simplification + Δ Simplification$
+
 
 **Prediction 2**
 
-Greater landscape heterogeneity will lower the negative effects of landscape simplification on breeding trends. “Is the effect of landscape diversity on Upland Sandpiper population dynamics dependent on the degree of simplification?”
+Greater landscape heterogeneity will lower the negative effects of landscape simplification on breeding trends. 
+“Is the effect of landscape diversity on Upland Sandpiper population dynamics dependent on the degree of simplification?”
 
-$Trend = Δ SHDI + Δ Cropland + Δ SHDI * Δ Cropland + (1 | Location)$
+$Trend = Δ SHDI + Δ Cropland + Δ SHDI * Δ Cropland $
 
 **Prediction 3**
 
-Forage agriculture and grasslands are associated with positive trends and high abundance. “How are trends in forage agriculture and grasslands associated with trends and abundance of Upland Sandpiper?”
+Forage agriculture and grasslands are associated with positive trends and high abundance. 
+“How are trends in forage agriculture and grasslands associated with trends in abundance of Upland Sandpiper?”
 
-$Trend = Δ Forage Ag + Δ Grassland + (1 | Location)$
+$Trend = Δ Forage Ag + Δ Grassland$
 
-“Does configuration of forage and grassland habitats influence their association with trends and abundance
 
-$Trend = Δ Forage Agriculture * Δ Forage Ag LPI + Δ Grassland *  Δ Grassland LPI + (1 | Location)$
 
 **Prediction 4**
 
 Trends decline or become more variable with increasing distance from the core breeding range. Conversely, trends will be more stable near the core breeding region.
 
-$Trend = Periphery + (1 | Location)$
+$Trend = Periphery $
 
 **Prediction 5**
 
 Geographical variation in abundance is driven by marginal habitat at the periphery.
 
-$Trend = Periphery + Δ SHDI +  Δ Cropland + (1 | Location) + (1| Year)$
+$Trend = Periphery + Δ SHDI +  Δ Cropland$
 
 # Library
 
@@ -69,12 +75,23 @@ library(gratia)
 library(ggcorrplot)
 library(brms)
 library(tidybayes)
+library(cmdstanr)
+library(GGally)
 ```
 
 ```{r, include=FALSE}
 #Edited trend df
 NA_model <- readRDS("Data/NA_model.rds")
 names(NA_model)
+```
+
+
+```{r}
+NA_model <- NA_model %>%
+  mutate(CI_width = abd_trend_upper - abd_trend_lower)
+
+NA_model <- NA_model %>% 
+  filter(CI_width <= 35)
 ```
 
 # Response Distribution
@@ -122,7 +139,7 @@ Correlation matrix before aggregating predictors.
 ```{r, echo=FALSE}
 # List of predictors to include
 mean_predictors <- c(
-    "shdi_mean" , "simp_mean" , "FLPI_mean" , "GLPI_mean" , "ED_mean" , "FO_mean" , "GR_mean" , "abd", "Core_distance", "snat_mean" 
+    "shdi_mean" , "simp_mean" ,  "ED_mean" , "FO_mean" , "abd" , "Core_distance", "snat_mean" 
 )
 
 mean_filtered_data <- NA_model %>%
@@ -138,7 +155,7 @@ I still need to determine a pearsons correlation coefficient threshold to report
 ```{r}
 # List of predictors to include
 slope_predictors <- c(
-    "shdi_slope" , "simp_slope" , "FLPI_slope" , "GLPI_slope" , "ED_slope" , "FO_slope" , "GR_slope" , "abd", "Core_distance", "snat_slope" 
+    "shdi_slope" , "simp_slope" , "ED_slope" , "FO_slope" , "GR_slope" , "Core_distance", "snat_slope" 
 )
 
 slope_filtered_data <- NA_model %>%
@@ -167,7 +184,7 @@ ggcorrplot(all_cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", 
 
 # Create ggpairs plot
 ggpairs(
-  filtered_data,
+  all_filtered_data,
   lower = list(continuous = wrap("smooth", colour = "blue", size = 1)),
   diag = list(continuous = "densityDiag"), 
   upper = list(continuous = "cor") 
@@ -262,7 +279,7 @@ ggplot(NA_model, aes(x = GLPI_mean, y = abd_trend)) +
 Plot trend \~ slope and trend \~ Mean
 
 ```{r, echo=FALSE}
-ggplot(NA_model, aes(x = FLPI_mean, y = abd_trend)) +
+ggplot(NA_model, aes(x = log(FLPI_mean), y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
   labs(
@@ -321,7 +338,7 @@ lines(ED_seq,EDQ,lwd=2)
 ### Periphery
 
 ```{r, echo=FALSE}
-ggplot(NA_model, aes(x = Core_distance, y = abd_trend)) +
+ggplot(NA_model, aes(x = log(Core_distance), y = abd_trend)) +
   geom_point( alpha = 0.3, size = 2) +  
   geom_smooth(method = "loess",  se = TRUE, linetype = "dashed") + 
   labs(
@@ -339,82 +356,12 @@ ggplot(NA_model, aes(x = Core_distance, y = abd_trend)) +
 
 # Model Runs
 
-## Null model
-
-```{r}
-null_model <- glm(abd_trend ~ 1, data = NA_model)
-```
-
 ## Global Models
 
 Removed both LPI metrics for now due to high correlation with many variables.
 
-### Linear Models
 
-LM 1
-
-```{r}
-lm_global <- lm(abd_trend ~ FO_mean + GR_mean +  shdi_mean  + simp_mean + simp_mean*shdi_mean + abd + srd_id + Core_distance, data = NA_model)
-summary(lm_global)
-plot(lm_global)
-vif(lm_global)
-
-```
-
-LM2
-
-```{r}
-lm_global2 <- lm(abd_trend ~  GR_mean +  shdi_mean  + simp_mean + abd + srd_id + Core_distance, data = NA_model)
-summary(lm_global2)
-plot(lm_global2)
-vif(lm_global2)
-
-```
-
-### General Linear Models
-
-glm 1
-
-```{r}
-glm_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean + abd + simp_mean*shdi_mean + srd_id + Core_distance, family = "gaussian", data = NA_model)
-summary(glm_global)
-plot(glm_global)
-vif(glm_global)
-
-```
-
-GLM 2 GLM global model removing non-informative parameters from glm 1 (mean simp and abd)
-
-```{r}
-glm_global2 <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + abd + srd_id + Core_distance, family = "gaussian", data = NA_model)
-summary(glm_global2)
-plot(glm_global2)
-vif(glm_global2)
-
-
-```
-
-### GLM Polynomial models
-
-polynomial global
-
-```{r}
-poly_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean + I(ED_mean^2) + shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean + Core_distance , data = NA_model)
-summary(poly_global)
-
-```
-
-```{r}
-poly_global2 <- glm(abd_trend ~ FO_mean + GR_mean +  shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
-summary(poly_global2)
-```
-
-```{r}
-poly_global3 <- glm(abd_trend ~ FO_mean + GR_mean  + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
-summary(poly_global3)
-```
-
-### General Additive Models
+### General Additive Model
 
 GAM 1
 
@@ -427,7 +374,7 @@ gam_global <- gam(abd_trend ~
                     s(simp_mean) + 
                     (abd) +  
                     te(shdi_mean, simp_mean) + 
-                    s(longitude, latitude, bs= "tp", k = 300 ) + 
+                    s(longitude, latitude, bs= "gp", k = 300 ) + 
                     s(Core_distance), 
                   data = NA_model, method = "ML")
 summary(gam_global)
@@ -496,22 +443,21 @@ gam.check(gam_global4)
 draw(gam_global4)
 ```
 
-### Global models AIC
 
-```{r, echo=FALSE}
-globals <- AIC(null_model, lm_global, lm_global2, glm_global, glm_global2, poly_global, poly_global2, poly_global3, gam_global, gam_global2, gam_global3)
-
-globals <- globals %>% dplyr::arrange(AIC)
-globals
-```
 
 ### Prediction 1
 
 ```{r}
-P1gam <- gam(abd_trend ~ s(shdi_mean) + s(ED_mean) + s(simp_mean) + s(longitude, latitude), data = NA_model)
+P1gam <- gam(abd_trend ~ s(shdi_slope) + 
+               s(shdi_mean) + 
+               s(ED_slope, k = 35) + 
+               s(ED_mean, k = 35) + 
+               simp_slope + simp_mean + 
+               s(longitude, latitude, bs = "tp", k = 500), 
+             data = NA_model)
 summary(P1gam)
-plot(P1gam, pages = 1, seWithMean = TRUE)
 gam.check(P1gam)
+plot(P1gam, pages = 1, seWithMean = TRUE)
 ```
 
 ```{r}
@@ -535,19 +481,72 @@ P2gam <- gam(abd_trend ~ s(shdi_mean) +
                s(longitude, latitude, bs= "tp", k = 300)
              , data = NA_model)
 summary(P2gam)
+
 draw(P2gam)
 ```
+
+
+```{r}
+P2gamslope <- gam(abd_trend ~ s(shdi_slope) + 
+               s(simp_slope) + 
+               te(shdi_slope, simp_slope) + 
+               s(longitude, latitude, bs= "tp", k = 300)
+             , data = NA_model)
+summary(P2gamslope)
+gam.check(P2gamslope)
+draw(P2gamslope)
+```
+### Prediction 3
+
+```{r}
+P3gam <- gam(abd_trend ~ FO_slope + 
+               s(FO_mean) + 
+               GR_slope + 
+               s(GR_mean, k = 15) + 
+               s(longitude, latitude, bs= "tp", k = 300),
+            data = NA_model)
+summary(P3gam)
+gam.check(P3gam) 
+draw(P3gam)
+```
+
+
+### Prediction 4
+
+
+```{r}
+P4gam <- gam(abd_trend ~ Core_distance + 
+             s(longitude, latitude, bs = "tp", k = 300),
+            data = NA_model)
+summary(P4gam)
+gam.check(P4gam)
+draw(P4gam)
+```
+### Prediction 5
+
+
+```{r}
+P5gam <- gam(abd_trend ~ te(shdi_slope, Core_distance) + 
+               te(simp_slope, Core_distance) + 
+               s(longitude, latitude, bs = "tp", k = 300),
+            data = NA_model)
+summary(P5gam)
+gam.check(P5gam)
+draw(P5gam)
+```
+
 
 # Bayesian GAM
 
 Read df with all estimates and their 100 folds
 
-```{r}
+```{r, eval=FALSE, include = FALSE}
 NA_folds <- readRDS("Data/NA_folds.rds")
 ```
 
 test run on a small sample
-```{r}
+
+```{r, eval=FALSE, include = FALSE}
 # Select 5 random locations
 test_locations <- sample(unique(NA_folds$srd_id), 50)
 
@@ -559,9 +558,9 @@ NA_fol <- NA_folds %>%
  filter(!(srd_id >= 242031))
 ```
 
-
 Prior check
-```{r}
+
+```{r, eval=FALSE, include = FALSE}
 # Run the model using priors only
 prior_check <- brm(
   abd_trend ~ (1 | srd_id),
@@ -583,9 +582,7 @@ prior_check <- brm(
 plot(prior_check)
 ```
 
-
-
-```{r}
+```{r, eval=FALSE, include = FALSE}
 bayes_model1 <- brm(
   abd_trend ~ 
      (1 | srd_id),
@@ -603,7 +600,7 @@ bayes_model1 <- brm(
 
 ```
 
-```{r}
+```{r, eval=FALSE, include = FALSE}
 saveRDS(bayes_model1, "Data/Bayesm1.rds")
 
 summary(bayes_model1)
@@ -620,7 +617,7 @@ print(post_summary)
 saveRDS(post_summary, "Data/post_summary.rds")
 ```
 
-```{r}
+```{r, eval=FALSE, include = FALSE}
 ggplot(post_summary_test, aes(x = trend_est)) +
   geom_histogram(binwidth = 5, fill = "blue", alpha = 0.6, color = "black") +
   theme_minimal() +
@@ -645,11 +642,9 @@ ggplot(post_summary_test, aes(x = reorder(srd_id, trend_est), y = trend_est)) +
 
 ```
 
-
 ## BRM model 2 with priors
 
-
-```{r}
+```{r, eval=FALSE, include = FALSE}
 bayes_model2 <- brm(
   abd_trend ~ (1 | srd_id),  
   data = NA_folds,  
@@ -672,7 +667,7 @@ bayes_model2 <- brm(
 
 ```
 
-```{r}
+```{r, eval=FALSE, include = FALSE}
 summary(bayes_model2)
 post_summary2 <- bayes_model2 %>%
   spread_draws(r_srd_id[srd_id,]) %>%  
@@ -688,8 +683,7 @@ saveRDS(post_summary2, "Data/post_summary2.rds")
 plot(bayes_model2)
 ```
 
-
-```{r}
+```{r, eval=FALSE, include = FALSE}
 ggplot(post_summary2, aes(x = ci_width)) +
   geom_histogram(binwidth = 0.005, fill = "blue", alpha = 0.6, color = "black") +
   theme_minimal() +
@@ -709,27 +703,38 @@ ggplot(post_summary2, aes(x = srd_id, y = ci_width)) +
 ```
 
 ## Gaussian Process model
+
+Make subset of data 
 ```{r}
+NA_folds <- NA_folds %>%
+  filter(srd_id >= 230274 & srd_id <= 240815)
+```
+
+
+```{r, eval=FALSE, include = FALSE}
 bayes_model_gp <- brm(
-  abd_trend ~ gp(longitude, latitude),  # GP smooths spatial variation
+  abd_trend ~ gp(longitude, latitude, k = 5, c = 5/4),  # GP smooths spatial variation
   data = NA_folds,
   family = gaussian(),
   prior = c(
     prior(normal(0, 10), class = Intercept)),
   chains = 4,                
-  iter = 16000,              
-  warmup = 3000,            
-  cores = 16,                
+  iter = 4000,              
+  warmup = 2000,            
+  cores = 4,  
+  threads = threading(2),
+  backend = "cmdstanr",
   control = list(
     adapt_delta = 0.99,      
-    max_treedepth = 15       
+    max_treedepth = 8       
   )
 )
 ```
 
-
-```{r}
+```{r, eval=FALSE, include = FALSE}
 summary(bayes_model_gp)
+install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+cmdstanr::install_cmdstan()
+library(cmdstanr)
 plot(bayes_model_gp)
 ```
-

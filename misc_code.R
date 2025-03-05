@@ -278,3 +278,76 @@ ggplot(utrends, aes(x = CI_stdev)) +
 filter(!(srd_id >= 126707 & srd_id <= 171704)) %>% 
   filter(CI_width <= 50) %>%
   filter(CI_stdev <= 20)
+
+### Linear Models
+
+LM 1
+
+```{r}
+lm_global <- lm(abd_trend ~ FO_mean + GR_mean +  shdi_mean  + simp_mean + simp_mean*shdi_mean + abd + srd_id + Core_distance, data = NA_model)
+summary(lm_global)
+plot(lm_global)
+vif(lm_global)
+
+```
+
+LM2
+
+```{r}
+lm_global2 <- lm(abd_trend ~  GR_mean +  shdi_mean  + simp_mean + abd + srd_id + Core_distance, data = NA_model)
+summary(lm_global2)
+plot(lm_global2)
+vif(lm_global2)
+
+```
+
+### General Linear Models
+
+glm 1
+
+```{r}
+glm_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + simp_mean + abd + simp_mean*shdi_mean + srd_id + Core_distance, family = "gaussian", data = NA_model)
+summary(glm_global)
+plot(glm_global)
+vif(glm_global)
+
+```
+
+GLM 2 GLM global model removing non-informative parameters from glm 1 (mean simp and abd)
+
+```{r}
+glm_global2 <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean +  shdi_mean + abd + srd_id + Core_distance, family = "gaussian", data = NA_model)
+summary(glm_global2)
+plot(glm_global2)
+vif(glm_global2)
+
+
+```
+
+### GLM Polynomial models
+
+polynomial global
+
+```{r}
+poly_global <- glm(abd_trend ~ FO_mean + GR_mean + ED_mean + I(ED_mean^2) + shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean + Core_distance , data = NA_model)
+summary(poly_global)
+
+```
+
+```{r}
+poly_global2 <- glm(abd_trend ~ FO_mean + GR_mean +  shdi_mean + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
+summary(poly_global2)
+```
+
+```{r}
+poly_global3 <- glm(abd_trend ~ FO_mean + GR_mean  + simp_mean + I(simp_mean^2) + I(simp_mean^3) + abd + srd_id + shdi_mean*simp_mean +  Core_distance , data = NA_model)
+summary(poly_global3)
+```
+### Global models AIC
+
+```{r, echo=FALSE}
+globals <- AIC(null_model, lm_global, lm_global2, glm_global, glm_global2, poly_global, poly_global2, poly_global3, gam_global, gam_global2, gam_global3)
+
+globals <- globals %>% dplyr::arrange(AIC)
+globals
+```

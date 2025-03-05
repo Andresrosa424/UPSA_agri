@@ -1,0 +1,121 @@
+---
+title: "PHJV Analysis"
+author: "Andres N. Rosales"
+date: "2025-03-04"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+
+library(dplyr)
+library(purrr)
+library(sf)
+library(ggplot2)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(tidyr)
+library(units)
+library(dplyr)
+library(lme4)
+library(mgcv)
+library(GGally)
+library(car)
+library(gratia)
+library(ggcorrplot)
+library(brms)
+library(tidybayes)
+library(cmdstanr)
+library(GGally)
+```
+
+
+```{r, eval=FALSE, include = FALSE}
+NA_folds <- readRDS("Data/NA_folds.rds")
+names(NA_folds)
+```
+
+```{r}
+phjv_locations <- read.csv("C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/phjv_points.csv")
+```
+
+
+```{r}
+ggplot(phjv_folds, aes(x = abd_trend)) +
+  geom_histogram(bins = 20, fill = "blue", color = "black") +
+  theme_minimal()
+```
+
+
+```{r}
+#filter the phjv locations from the folds df
+phjv_folds <-  NA_folds %>%
+  filter(srd_id %in% phjv_locations$srd_id)
+```
+
+
+```{r}
+sd(phjv_folds$abd_trend, na.rm = TRUE)
+```
+
+
+```{r}
+mean_abd_trend <- mean(phjv_folds$abd_trend, na.rm = TRUE)
+sd_abd_trend <- sd(phjv_folds$abd_trend, na.rm = TRUE)
+range_abd_trend <- range(phjv_folds$abd_trend, na.rm = TRUE)
+
+list(mean = mean_abd_trend, sd = sd_abd_trend, range = range_abd_trend)
+
+```
+
+
+```{r}
+options(mc.cores = parallel::detectCores())
+cmdstanr::cmdstan_make_local(cpp_options = list("STAN_NUM_THREADS" = "16"))
+
+```
+
+```{r, eval=FALSE, include = FALSE}
+bayes_model_gp <- brm(
+  abd_trend ~ gp(longitude, latitude, k = 5, c = 5/4),  # GP smooths spatial variation
+  data = phjv_folds,
+  family = gaussian(),
+  prior = c(
+    prior(normal(10, 20), class = Intercept),
+    prior(normal(34, 10), class = sdgp),      # Controls how much variation is captured by spatial structure. Here I used the SD of the trend
+    prior(normal(75, 20),class = lscale, coef = gplongitudelatitude)),   # Represents the distance trends are no longer correlated. Based on natal dispersal reported in Sandercock paper 
+  chains = 10,                
+  iter = 5000,              
+  warmup = 2500,            
+  cores = 10,  
+  threads = threading(4),
+  backend = "cmdstanr",
+  control = list(
+    adapt_delta = 0.999,      
+    max_treedepth = 15       
+  )
+)
+```
+
+
+```{r}
+summary(bayes_model_gp)
+```
+
+
+
+
+
+
+
+
+
+
+

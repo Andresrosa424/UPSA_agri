@@ -81,7 +81,7 @@ library(GGally)
 
 ```{r, include=FALSE}
 #Edited trend df
-NA_model <- readRDS("Data/NA_model.rds")
+NA_model <- readRDS("NA_model.rds")
 names(NA_model)
 ```
 

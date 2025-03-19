@@ -38,13 +38,37 @@ library(GGally)
 
 
 ```{r, eval=FALSE, include = FALSE}
+# Read NA folds df
 NA_folds <- readRDS("Data/NA_folds.rds")
 names(NA_folds)
 ```
 
 ```{r}
+#Read phjv locations (doesnt have landscape metrics)
 phjv_locations <- read.csv("C:/Users/Andres/OneDrive - University of Saskatchewan/02_Analysis/Chapter1/phjv_points.csv")
 ```
+
+
+```{r}
+#filter the phjv locations from the folds df
+phjv_folds <-  NA_folds %>%
+  filter(srd_id %in% phjv_locations$srd_id)
+```
+
+```{r}
+phjv_model <- phjv_folds %>%
+  group_by(srd_id) %>%
+  summarise(across(8:32, \(x) mean(x, na.rm = TRUE)))
+
+phjv_model <- merge(phjv_locations, phjv_model, by = "srd_id", all.x = TRUE)
+
+```
+
+
+```{r}
+saveRDS(phjv_folds, "C:/Users/Andres/Desktop/HPC/phjv_folds.rds" )
+```
+
 
 
 ```{r}
@@ -54,11 +78,12 @@ ggplot(phjv_folds, aes(x = abd_trend)) +
 ```
 
 
+
 ```{r}
-#filter the phjv locations from the folds df
-phjv_folds <-  NA_folds %>%
-  filter(srd_id %in% phjv_locations$srd_id)
+ggplot(data = phjv_folds, aes(y = latitude, x = longitude)) +
+  geom_point()
 ```
+
 
 
 ```{r}
@@ -110,12 +135,35 @@ summary(bayes_model_gp)
 ```
 
 
+# Frequentist Gam
 
+```{r}
+ggplot(phjv_folds, aes(x = abd_trend)) +
+  geom_histogram(bins = 20, fill = "blue", color = "black") +
+  theme_minimal()
+```
 
+```{r}
+# List of predictors to include
+all_predictors <- c(
+    "shdi_mean" , "simp_mean" , "FO_mean" , "GR_mean" , "Core_distance", "shdi_slope" , "simp_slope" ,   "FO_slope" , "GR_slope" 
+)
 
+all_filtered_data <- phjv_model %>%
+  dplyr::select(all_of(all_predictors))
 
+all_cor_matrix <- cor(all_filtered_data, use = "complete.obs", method = "spearman")
 
+ggcorrplot(all_cor_matrix, lab = TRUE, lab_size = 3, colors = c("red", "white", "blue"))
 
+```
 
+```{r}
+result <- readRDS("C:/Users/Andres/Desktop/bayes_model_gp.rds")
+summary(result)
+posterior_samples(result)
+as.array(result)
+summary(bayes_model_gp)
 
+```
 

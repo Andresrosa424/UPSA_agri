@@ -23,7 +23,6 @@ This code extracts and manipulates eBird status and trends data for the first ch
 
 ```
 
-
 ## Library
 
 ```{r, message=FALSE, warning=FALSE}
@@ -52,30 +51,31 @@ library(tmap)
 
 ```
 
-
 ## Extract Status and Trend Data
+
 This code views and extracts available status and trend data for Upland Sandpiper.
 
-
 Set unique key to access eBirdst data (expires Jan 18th 2025)
+
 ```{r}
 set_ebirdst_access_key("suvkk96q5mrj", overwrite = TRUE)
 
 ```
 
-Show all species with status and trend data available. We will subset to show Upland Sandpiper data availability. 
+Show all species with status and trend data available. We will subset to show Upland Sandpiper data availability.
+
 ```{r}
 
 trend_runs <- ebirdst_runs 
 
 u_runs <- trend_runs %>%
-  filter(common_name == "Upland Sandpiper") 
+  filter(common_name == "Upland Sandpiper")
+w_runs <- trend_runs %>%
+  filter(common_name == "Willet") 
 ```
 
+Create an object of Upland Sandpiper trends (2012-2022). \*waiting for new eBird data release in November
 
-
-Create an object of Upland Sandpiper trends (2012-2022). 
-*waiting for new eBird data release in November
 ```{r}
 #ebirdst_download_trends("Upland Sandpiper")
 
@@ -86,6 +86,7 @@ write.csv(raw_utrends, file = "Data/raw_utrends.csv", row.names = FALSE)
 ```
 
 Create object with upsa fold estimates and calculate the width of the CI and Standard Dev.
+
 ```{r}
 utrends_folds <- load_trends("Upland Sandpiper", fold_estimates = TRUE)
 
@@ -95,8 +96,8 @@ write_rds(utrends_folds, file = "Data/utrend_folds.rds")
 
 ```
 
+filter to remove AK and YT trends, CI width, and st dev. Plot distribution of remaining trends after filtering.
 
-filter to remove AK and YT trends, CI width, and st dev. Plot distribution of remaining trends after filtering. 
 ```{r}
 utrends <- raw_utrends %>% 
   filter(!(srd_id >= 126707 & srd_id <= 171704))
@@ -108,11 +109,10 @@ ggplot(utrends, aes(x = abd_trend)) +
 saveRDS(utrends, "Data/utrends.rds")
 ```
 
-
-
 # Spatial Buffer for predictor grid
-Using utrends_st, make the spatial format that will be used in landscape metric code
-Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
+
+Using utrends_st, make the spatial format that will be used in landscape metric code Using utrend_st make an 'sf' object. Set crs as WGS84 then reproject to NAD83 (5070)
+
 ```{r}
 #set to 4326 then transform later during lsm
 utrends_buff <- utrends |> 
@@ -129,14 +129,8 @@ write_sf(utrends_buff,"Trends_sf/utrends_buff.gpkg",layer = "ubuff")
 
 ```
 
-
-
-
-
-
-
-
 ## Spatial Buffer for PHJV
+
 ```{r}
 phjv_sf <- st_read("Trends_sf/utrends_points_phjv.shp") #shapefile of points in NAD83
 
@@ -159,16 +153,15 @@ write_sf(phjv_buff,"Predictor_buffer/utrd_buff_PHJV.gpkg",
          layer = "ubuffPHJV")
 ```
 
-
 ## Rasterize Upland Sandpiper trends
 
 rasterize cumulative trend estimate using `terra` package
+
 ```{r, include=FALSE}
 utrends_ras <- rasterize_trends(utrends_st, 
                                   layers = c("abd_trend"))
 
 ```
-
 
 ```{r}
 #save as a geotiff for use in arcpro
@@ -178,11 +171,8 @@ plot(utrends_ras)
 
 ```
 
+#Status Predictive Importance Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables). Only top 30 ranked PI are given in the object 'pi' These are downloaded to the eBird Directory, not in working directory
 
-
-#Status Predictive Importance
-Downloads and views the eBird status data for Upland Sandpiper (along with PI for variables).
-Only top 30 ranked PI are given in the object 'pi' These are downloaded to the eBird Directory, not in working directory
 ```{r}
 ebirdst_download_status("uplsan", download_pis = TRUE)
 
@@ -194,17 +184,16 @@ pi_des <- ebirdst_predictor_descriptions
 
 ```
 
-
 ## Rasterize Upland Sandpiper trends
 
 rasterize cumulative trend estimate using `terra` package
+
 ```{r, include=FALSE}
 utrends_ras <- rasterize_trends(utrends_st, 
                                   layers = c("abd_trend"))
 
 
 ```
-
 
 ```{r}
 #keep projection and change in arcpro
@@ -215,9 +204,8 @@ plot(utrends_ras)
 
 ```
 
-
 ## Session Info
+
 ```{r}
 sessionInfo()
 ```
-
